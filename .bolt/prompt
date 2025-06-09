@@ -1,5 +1,38 @@
-For all designs I ask you to make, have them be beautiful, not cookie cutter. Make webpages that are fully featured and worthy for production.
+# Guiding Principles
 
-By default, this template supports JSX syntax with Tailwind CSS classes, React hooks, and Lucide React for icons. Do not install other packages for UI themes, icons, etc unless absolutely necessary or I request them.
+- **Aesthetics & Quality**: Create beautiful, modern, and production-ready web applications. Avoid generic, cookie-cutter designs. Emphasize a clean user experience and thoughtful interface design. Prioritize responsiveness and mobile-first design principles.
+- **Code Quality**: Write clean, maintainable, and strongly-typed TypeScript code. Follow best practices for React development, including functional components, hooks, and strict linting rules.
+- **Performance**: Build performant applications. Pay attention to bundle size, rendering performance, efficient data fetching, and lazy loading. Optimize assets and leverage caching strategies.
 
-Use icons from lucide-react for logos.
+# Core Technologies
+
+This project uses the following technologies. Please use them exclusively unless a new dependency is explicitly requested.
+
+- **Framework**: React 18 with Vite. Use Vite's fast build and development capabilities to streamline workflows.
+- **Language**: TypeScript. Ensure all code is strongly typed and adheres to TypeScript best practices.
+- **Styling**: Tailwind CSS. Build components from scratch using utility classes. Avoid component libraries like Material UI or Bootstrap unless explicitly requested.
+- **Icons**: Use `lucide-react` for all icons, including logos. Ensure icons are scalable and accessible.
+- **Routing**: `TanStack Router` for all routing needs. Leverage its features like type-safe navigation, search parameter handling, and nested routes.
+- **Data Fetching & Server State**: `TanStack Query` is the standard for fetching, caching, and managing server state. Use its advanced features like query invalidation, optimistic updates, and pagination.
+- **Client State Management**: For simple component state, use `useState` and `useReducer`. For complex or shared client state, use `Zustand` with clear and modular store definitions.
+- **Backend**: Interact with `@supabase/supabase-js` for backend services like database, authentication, and storage. Follow Supabase best practices for security and scalability.
+- **Schema Validation**: Use `zod` for all data validation, including form validation and API response validation. Ensure validation schemas are reusable and well-documented.
+
+# Development Practices
+
+- **Component Design**: Create small, reusable, and composable components. Follow the single-responsibility principle and ensure components are easy to test.
+- **File Structure**: Organize files logically within the `src` directory (e.g., `src/components`, `src/routes`, `src/hooks`, `src/lib`, `src/store`). Use clear and consistent naming conventions.
+- **Hooks**: Encapsulate reusable logic in custom hooks. Ensure hooks are well-documented and follow React's rules of hooks.
+- **Accessibility (a11y)**: Ensure all components and pages are accessible. Follow WCAG guidelines and test with screen readers.
+- **Testing**: Write unit tests for all components and hooks using `vitest`. Ensure critical paths are covered with integration tests.
+- **Version Control**: Use Git for version control. Follow a clear branching strategy (e.g., feature branches, pull requests, and code reviews).
+- **Documentation**: Document all components, hooks, and utilities. Use JSDoc for inline documentation and maintain a comprehensive README.
+- **Error Handling**: Implement robust error handling for both client-side and server-side operations. Use React error boundaries and handle API errors gracefully.
+- **Security**: Follow best practices for securing client-side and server-side code. Avoid exposing sensitive information and validate all inputs.
+
+# Deployment Practices
+
+- **Environment Variables**: Use `.env` files for managing environment-specific variables. Avoid hardcoding sensitive information.
+- **Build Optimization**: Optimize builds for production using Vite's configuration options. Minify assets and enable tree-shaking.
+- **Monitoring & Analytics**: Integrate tools like Sentry for error monitoring and analytics platforms for tracking user behavior.
+- **CI/CD**: Set up continuous integration and deployment pipelines to automate testing and deployment processes.
