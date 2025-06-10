@@ -8,14 +8,14 @@ import {
   Linkedin, 
   Globe,
   Star,
-  Award,
   Code,
   Edit3,
   ArrowLeft,
-  Calendar,
   DollarSign,
-  TrendingUp
+  TrendingUp,
+  LogOut
 } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
 interface ProfileProps {
   userType: 'developer' | 'company';
@@ -24,6 +24,16 @@ interface ProfileProps {
 
 const Profile: React.FC<ProfileProps> = ({ userType, onNavigate }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const { signOut, loading } = useAuth();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      onNavigate('landing'); // Navigate to landing page after sign out
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
+  };
 
   const developerProfile = {
     name: "Alex Johnson",
@@ -96,9 +106,15 @@ const Profile: React.FC<ProfileProps> = ({ userType, onNavigate }) => {
               <ArrowLeft className="w-5 h-5" />
               <span>Back to Dashboard</span>
             </button>
-            <div className="flex items-center space-x-2">
-              <User className="w-6 h-6 text-purple-600" />
-              <span className="font-bold text-xl text-gray-900">Profile</span>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={handleSignOut}
+                disabled={loading}
+                className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>{loading ? 'Signing out...' : 'Sign Out'}</span>
+              </button>
             </div>
           </div>
         </div>

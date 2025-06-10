@@ -1,58 +1,29 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Database } from './types';
+import { databases, account, DATABASE_ID } from '../appwrite';
+import type { QueryOptions } from './appwrite-types';
+import { Query } from 'appwrite';
 
 /**
- * Database Connection Manager
- * Handles secure database connections with proper error handling and connection pooling
+ * Database Connection Manager for Appwrite
+ * Handles secure database connections with proper error handling
  */
-class DatabaseConnection {
-  private static instance: DatabaseConnection;
-  private client: SupabaseClient<Database>;
+class AppwriteConnection {
+  private static instance: AppwriteConnection;
   private isConnected: boolean = false;
   private connectionAttempts: number = 0;
   private maxRetries: number = 3;
 
   private constructor() {
-    this.client = this.initializeClient();
     this.testConnection();
   }
 
   /**
    * Singleton pattern to ensure single database connection instance
    */
-  public static getInstance(): DatabaseConnection {
-    if (!DatabaseConnection.instance) {
-      DatabaseConnection.instance = new DatabaseConnection();
+  public static getInstance(): AppwriteConnection {
+    if (!AppwriteConnection.instance) {
+      AppwriteConnection.instance = new AppwriteConnection();
     }
-    return DatabaseConnection.instance;
-  }
-
-  /**
-   * Initialize Supabase client with secure configuration
-   */
-  private initializeClient(): SupabaseClient<Database> {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error('Missing required Supabase environment variables');
-    }
-
-    return createClient<Database>(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: true,
-      },
-      db: {
-        schema: 'public',
-      },
-      global: {
-        headers: {
-          'X-Client-Info': 'bolt-forge-2.0',
-        },
-      },
-    });
+    return AppwriteConnection.instance;
   }
 
   /**
@@ -60,37 +31,42 @@ class DatabaseConnection {
    */
   private async testConnection(): Promise<void> {
     try {
-      const { error } = await this.client.from('profiles').select('count').limit(1);
-      
-      if (error) {
-        throw error;
-      }
+      // Test connection by attempting to list skills (a lightweight operation)
+      await databases.listDocuments(DATABASE_ID, 'skills', [Query.limit(1)]);
       
       this.isConnected = true;
       this.connectionAttempts = 0;
-      console.log('✅ Database connection established');
+      console.log('✅ Appwrite database connection established');
     } catch (error) {
       this.isConnected = false;
       this.connectionAttempts++;
       
-      console.error(`❌ Database connection failed (attempt ${this.connectionAttempts}):`, error);
+      console.error(`❌ Appwrite database connection failed (attempt ${this.connectionAttempts}):`, error);
       
       if (this.connectionAttempts < this.maxRetries) {
         setTimeout(() => this.testConnection(), 2000 * this.connectionAttempts);
       } else {
-        throw new Error('Failed to establish database connection after multiple attempts');
+        console.error('Failed to establish database connection after multiple attempts');
+        // Don't throw error to prevent app crash - Appwrite might be temporarily unavailable
       }
     }
   }
 
   /**
-   * Get the Supabase client instance
+   * Get the Appwrite databases instance
    */
-  public getClient(): SupabaseClient<Database> {
+  public getDatabases() {
     if (!this.isConnected) {
       console.warn('⚠️ Database connection not established, operations may fail');
     }
-    return this.client;
+    return databases;
+  }
+
+  /**
+   * Get the Appwrite account instance
+   */
+  public getAccount() {
+    return account;
   }
 
   /**
@@ -107,7 +83,84 @@ class DatabaseConnection {
     this.connectionAttempts = 0;
     await this.testConnection();
   }
+
+  /**
+   * Build Appwrite queries from QueryOptions
+   */
+  public buildQueries(options?: QueryOptions): string[] {
+    if (!options) return [];
+
+    const queries: string[] = [];
+
+    if (options.limit) {
+      queries.push(Query.limit(options.limit));
+    }
+
+    if (options.offset) {
+      queries.push(Query.offset(options.offset));
+    }
+
+    if (options.orderBy) {
+      if (options.orderDirection === 'desc') {
+        queries.push(Query.orderDesc(options.orderBy));
+      } else {
+        queries.push(Query.orderAsc(options.orderBy));
+      }
+    }
+
+    if (options.where) {
+      options.where.forEach(condition => {
+        switch (condition.operator) {
+          case '=':
+            queries.push(Query.equal(condition.field, condition.value));
+            break;
+          case '!=':
+            queries.push(Query.notEqual(condition.field, condition.value));
+            break;
+          case '<':
+            queries.push(Query.lessThan(condition.field, condition.value));
+            break;
+          case '<=':
+            queries.push(Query.lessThanEqual(condition.field, condition.value));
+            break;
+          case '>':
+            queries.push(Query.greaterThan(condition.field, condition.value));
+            break;
+          case '>=':
+            queries.push(Query.greaterThanEqual(condition.field, condition.value));
+            break;
+          case 'in':
+            if (Array.isArray(condition.value)) {
+              queries.push(Query.equal(condition.field, condition.value));
+            }
+            break;
+          case 'not-in':
+            if (Array.isArray(condition.value)) {
+              queries.push(Query.notEqual(condition.field, condition.value));
+            }
+            break;
+          case 'contains':
+            queries.push(Query.search(condition.field, condition.value as string));
+            break;
+          case 'search':
+            queries.push(Query.search(condition.field, condition.value as string));
+            break;
+        }
+      });
+    }
+
+    return queries;
+  }
 }
 
-export const dbConnection = DatabaseConnection.getInstance();
-export const supabase = dbConnection.getClient();
+export const dbConnection = AppwriteConnection.getInstance();
+export const appwriteDb = dbConnection.getDatabases();
+export const appwriteAccount = dbConnection.getAccount();
+
+// Legacy export for compatibility
+export const supabase = {
+  auth: appwriteAccount,
+  from: () => {
+    throw new Error('Legacy Supabase API usage detected. Please migrate to Appwrite.');
+  }
+};
