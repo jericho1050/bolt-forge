@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Mail, Lock, User, Building, Github, Chrome, AlertTriangle } from 'lucide-react';
+import { X, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useAuthValidation } from '../hooks/useAuthValidation';
 import { useRateLimit } from '../hooks/useRateLimit';
@@ -10,8 +10,9 @@ import {
   SignInFormData,
   OAuthProvider 
 } from '../lib/validations/auth';
-import FormField from './FormField';
-import PasswordStrengthIndicator from './PasswordStrengthIndicator';
+import OAuthButtons from './auth/OAuthButtons';
+import SignUpForm from './auth/SignUpForm';
+import SignInForm from './auth/SignInForm';
 
 interface EnhancedAuthModalProps {
   isOpen: boolean;
@@ -265,25 +266,11 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
           )}
 
           {/* OAuth Buttons */}
-          <div className="space-y-3 mb-6">
-            <button
-              onClick={() => handleOAuthSignIn('google')}
-              disabled={loading || rateLimit.isBlocked}
-              className="w-full flex items-center justify-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Chrome className="w-5 h-5 text-blue-600" />
-              <span>Continue with Google</span>
-            </button>
-            
-            <button
-              onClick={() => handleOAuthSignIn('github')}
-              disabled={loading || rateLimit.isBlocked}
-              className="w-full flex items-center justify-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Github className="w-5 h-5 text-gray-800" />
-              <span>Continue with GitHub</span>
-            </button>
-          </div>
+          <OAuthButtons
+            onOAuthSignIn={handleOAuthSignIn}
+            loading={loading}
+            disabled={rateLimit.isBlocked}
+          />
 
           <div className="relative mb-6">
             <div className="absolute inset-0 flex items-center">
@@ -296,259 +283,22 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
 
           {/* Forms */}
           {isSignUp ? (
-            <form onSubmit={handleSignUpSubmit} className="space-y-4">
-              {/* Account Type Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Account Type *
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => setSignUpData(prev => ({ ...prev, userType: 'developer' }))}
-                    className={`p-3 rounded-lg border-2 transition-colors disabled:opacity-50 ${
-                      signUpData.userType === 'developer'
-                        ? 'border-purple-500 bg-purple-50 text-purple-700'
-                        : 'border-gray-300 hover:border-gray-400'
-                    }`}
-                  >
-                    <User className="w-5 h-5 mx-auto mb-1" />
-                    <div className="text-sm font-medium">Developer</div>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => setSignUpData(prev => ({ ...prev, userType: 'company' }))}
-                    className={`p-3 rounded-lg border-2 transition-colors disabled:opacity-50 ${
-                      signUpData.userType === 'company'
-                        ? 'border-purple-500 bg-purple-50 text-purple-700'
-                        : 'border-gray-300 hover:border-gray-400'
-                    }`}
-                  >
-                    <Building className="w-5 h-5 mx-auto mb-1" />
-                    <div className="text-sm font-medium">Company</div>
-                  </button>
-                </div>
-              </div>
-
-              <FormField
-                label="Email Address"
-                name="email"
-                type="email"
-                value={signUpData.email}
-                onChange={handleSignUpChange('email')}
-                error={signUpValidation.errors.email}
-                placeholder="Enter your email"
-                required
-                disabled={loading}
-                autoComplete="email"
-                icon={<Mail className="w-5 h-5" />}
-              />
-
-              <FormField
-                label="Username"
-                name="username"
-                value={signUpData.username}
-                onChange={handleSignUpChange('username')}
-                error={signUpValidation.errors.username}
-                placeholder="Choose a username"
-                required
-                disabled={loading}
-                autoComplete="username"
-                icon={<User className="w-5 h-5" />}
-              />
-
-              <FormField
-                label="Password"
-                name="password"
-                type="password"
-                value={signUpData.password}
-                onChange={handleSignUpChange('password')}
-                error={signUpValidation.errors.password}
-                placeholder="Create a strong password"
-                required
-                disabled={loading}
-                autoComplete="new-password"
-                icon={<Lock className="w-5 h-5" />}
-                showPasswordToggle
-              >
-                <PasswordStrengthIndicator password={signUpData.password} />
-              </FormField>
-
-              <FormField
-                label="Confirm Password"
-                name="confirmPassword"
-                type="password"
-                value={signUpData.confirmPassword}
-                onChange={handleSignUpChange('confirmPassword')}
-                error={signUpValidation.errors.confirmPassword}
-                placeholder="Confirm your password"
-                required
-                disabled={loading}
-                autoComplete="new-password"
-                icon={<Lock className="w-5 h-5" />}
-                showPasswordToggle
-              />
-
-              <FormField
-                label="Full Name"
-                name="fullName"
-                value={signUpData.fullName || ''}
-                onChange={handleSignUpChange('fullName')}
-                error={signUpValidation.errors.fullName}
-                placeholder="Enter your full name"
-                disabled={loading}
-                autoComplete="name"
-              />
-
-              {signUpData.userType === 'company' && (
-                <FormField
-                  label="Company Name"
-                  name="companyName"
-                  value={signUpData.companyName || ''}
-                  onChange={handleSignUpChange('companyName')}
-                  error={signUpValidation.errors.companyName}
-                  placeholder="Enter company name"
-                  required
-                  disabled={loading}
-                  autoComplete="organization"
-                />
-              )}
-
-              <FormField
-                label="Location"
-                name="location"
-                value={signUpData.location || ''}
-                onChange={handleSignUpChange('location')}
-                error={signUpValidation.errors.location}
-                placeholder="City, Country"
-                disabled={loading}
-                autoComplete="address-level2"
-              />
-
-              <FormField
-                label="Phone Number"
-                name="phone"
-                type="tel"
-                value={signUpData.phone || ''}
-                onChange={handleSignUpChange('phone')}
-                error={signUpValidation.errors.phone}
-                placeholder="+1 (555) 123-4567"
-                disabled={loading}
-                autoComplete="tel"
-              />
-
-              {/* Terms Agreement */}
-              <div className="flex items-start space-x-2">
-                <input
-                  type="checkbox"
-                  id="agreeToTerms"
-                  checked={signUpData.agreeToTerms}
-                  onChange={handleSignUpChange('agreeToTerms')}
-                  disabled={loading}
-                  className="mt-1 w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 disabled:opacity-50"
-                />
-                <label htmlFor="agreeToTerms" className="text-sm text-gray-700">
-                  I agree to the{' '}
-                  <a href="#" className="text-purple-600 hover:text-purple-700">
-                    Terms of Service
-                  </a>{' '}
-                  and{' '}
-                  <a href="#" className="text-purple-600 hover:text-purple-700">
-                    Privacy Policy
-                  </a>
-                </label>
-              </div>
-              {signUpValidation.errors.agreeToTerms && (
-                <p className="text-red-600 text-sm">{signUpValidation.errors.agreeToTerms}</p>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading || signUpValidation.isValidating}
-                className="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                    Creating Account...
-                  </>
-                ) : (
-                  'Create Account'
-                )}
-              </button>
-            </form>
+            <SignUpForm
+              formData={signUpData}
+              onFormDataChange={handleSignUpChange}
+              onSubmit={handleSignUpSubmit}
+              validation={signUpValidation}
+              loading={loading}
+            />
           ) : (
-            <form onSubmit={handleSignInSubmit} className="space-y-4">
-              <FormField
-                label="Email or Username"
-                name="emailOrUsername"
-                value={signInData.emailOrUsername}
-                onChange={handleSignInChange('emailOrUsername')}
-                error={signInValidation.errors.emailOrUsername}
-                placeholder="Enter email or username"
-                required
-                disabled={loading}
-                autoComplete="username"
-                icon={<Mail className="w-5 h-5" />}
-              />
-
-              <FormField
-                label="Password"
-                name="password"
-                type="password"
-                value={signInData.password}
-                onChange={handleSignInChange('password')}
-                error={signInValidation.errors.password}
-                placeholder="Enter your password"
-                required
-                disabled={loading}
-                autoComplete="current-password"
-                icon={<Lock className="w-5 h-5" />}
-                showPasswordToggle
-              />
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="rememberMe"
-                    checked={signInData.rememberMe || false}
-                    onChange={handleSignInChange('rememberMe')}
-                    disabled={loading}
-                    className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 disabled:opacity-50"
-                  />
-                  <label htmlFor="rememberMe" className="text-sm text-gray-700">
-                    Remember me
-                  </label>
-                </div>
-                <a href="#" className="text-sm text-purple-600 hover:text-purple-700">
-                  Forgot password?
-                </a>
-              </div>
-
-              {!rateLimit.canAttempt && (
-                <p className="text-sm text-gray-600">
-                  {rateLimit.attemptsRemaining} attempts remaining
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading || !rateLimit.canAttempt || signInValidation.isValidating}
-                className="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                    Signing In...
-                  </>
-                ) : (
-                  'Sign In'
-                )}
-              </button>
-            </form>
+            <SignInForm
+              formData={signInData}
+              onFormDataChange={handleSignInChange}
+              onSubmit={handleSignInSubmit}
+              validation={signInValidation}
+              rateLimit={rateLimit}
+              loading={loading}
+            />
           )}
 
           <div className="mt-6 text-center">
