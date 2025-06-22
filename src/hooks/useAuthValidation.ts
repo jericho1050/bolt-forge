@@ -25,25 +25,24 @@ export function useAuthValidation<T>(schema: ZodSchema<T>) {
 
   const validateField = useCallback(
     (fieldName: string, value: any, formData?: Partial<T>) => {
-      // Only validate if field has been touched
-      if (!validation.touched[fieldName]) {
-        return true;
-      }
-
       try {
         // For single field validation, create a partial object
         const dataToValidate = formData || { [fieldName]: value };
-        schema.parse(dataToValidate);
         
-        setValidation(prev => ({
-          ...prev,
-          errors: { ...prev.errors, [fieldName]: '' },
-        }));
+        // Attempt to parse just this field with the schema
+        // For partial validation, we'll use safeParse to avoid throwing
+        const result = schema.safeParse(dataToValidate);
         
-        return true;
-      } catch (error) {
-        if (error instanceof ZodError) {
-          const fieldError = error.errors.find(err => 
+        if (result.success || !result.error.errors.some(err => err.path.includes(fieldName))) {
+          // Clear error if validation passes or if no error for this field
+          setValidation(prev => ({
+            ...prev,
+            errors: { ...prev.errors, [fieldName]: '' },
+          }));
+          return true;
+        } else {
+          // Find error for this specific field
+          const fieldError = result.error.errors.find(err => 
             err.path.includes(fieldName)
           );
           
@@ -53,11 +52,18 @@ export function useAuthValidation<T>(schema: ZodSchema<T>) {
               errors: { ...prev.errors, [fieldName]: fieldError.message },
             }));
           }
+          return false;
         }
+      } catch (error) {
+        // Fallback error handling
+        setValidation(prev => ({
+          ...prev,
+          errors: { ...prev.errors, [fieldName]: 'Validation error' },
+        }));
         return false;
       }
     },
-    [schema, validation.touched]
+    [schema]
   );
 
   const validateForm = useCallback(
@@ -65,23 +71,31 @@ export function useAuthValidation<T>(schema: ZodSchema<T>) {
       setValidation(prev => ({ ...prev, isValidating: true }));
       
       try {
+        // Validate the entire form
         await schema.parseAsync(data);
+        
+        // If validation passes, clear all errors
         setValidation(prev => ({
           ...prev,
           errors: {},
           isValid: true,
           isValidating: false,
         }));
+        
         return { isValid: true, errors: {} };
+        
       } catch (error) {
         if (error instanceof ZodError) {
           const errors: Record<string, string> = {};
           const touched: Record<string, boolean> = {};
           
+          // Process all validation errors
           error.errors.forEach(err => {
             const fieldName = err.path[0] as string;
-            errors[fieldName] = err.message;
-            touched[fieldName] = true;
+            if (fieldName) {
+              errors[fieldName] = err.message;
+              touched[fieldName] = true;
+            }
           });
           
           setValidation(prev => ({
@@ -95,8 +109,16 @@ export function useAuthValidation<T>(schema: ZodSchema<T>) {
           return { isValid: false, errors };
         }
         
-        setValidation(prev => ({ ...prev, isValidating: false }));
-        return { isValid: false, errors: { general: 'Validation failed' } };
+        // Handle unexpected validation errors
+        const generalError = { general: 'Validation failed. Please check your input.' };
+        setValidation(prev => ({ 
+          ...prev, 
+          errors: generalError,
+          isValidating: false,
+          isValid: false 
+        }));
+        
+        return { isValid: false, errors: generalError };
       }
     },
     [schema]
@@ -118,6 +140,14 @@ export function useAuthValidation<T>(schema: ZodSchema<T>) {
     }));
   }, []);
 
+  const setFieldError = useCallback((fieldName: string, error: string) => {
+    setValidation(prev => ({
+      ...prev,
+      errors: { ...prev.errors, [fieldName]: error },
+      touched: { ...prev.touched, [fieldName]: true },
+    }));
+  }, []);
+
   return {
     ...validation,
     validateField,
@@ -125,5 +155,6 @@ export function useAuthValidation<T>(schema: ZodSchema<T>) {
     clearErrors,
     clearFieldError,
     markFieldTouched,
+    setFieldError,
   };
 }
