@@ -38,6 +38,75 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     error: null,
   });
 
+  // Helper function to retry operations with exponential backoff
+  const retryWithBackoff = async <T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 3,
+    baseDelay: number = 1000
+  ): Promise<T> => {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        
+        // If it's not a network error or we've exhausted retries, throw immediately
+        if (!isNetworkError(error) || attempt === maxRetries) {
+          throw error;
+        }
+        
+        // Wait with exponential backoff
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.log(`Retry attempt ${attempt + 1}/${maxRetries} in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError;
+  };
+
+  // Helper function to detect network-related errors
+  const isNetworkError = (error: any): boolean => {
+    if (!error) return false;
+    
+    const errorMessage = error.message?.toLowerCase() || '';
+    const errorType = error.name?.toLowerCase() || '';
+    
+    return (
+      errorMessage.includes('failed to fetch') ||
+      errorMessage.includes('network error') ||
+      errorMessage.includes('network request failed') ||
+      errorMessage.includes('connection') ||
+      errorType === 'typeerror' ||
+      error.code === 0 || // Network error code
+      !navigator.onLine // Browser is offline
+    );
+  };
+
+  // Check if there's a valid session without trying to delete invalid ones
+  const checkSession = async () => {
+    try {
+      // Use retry mechanism for network resilience
+      const user = await retryWithBackoff(async () => {
+        return await account.get();
+      });
+      return user;
+    } catch (err) {
+      // If it's a network error after retries, don't clear the session
+      if (isNetworkError(err)) {
+        console.warn('Network error while checking session after retries, retaining current state:', err);
+        // Return null but don't clear existing session data
+        throw new Error('Network connection error after retries');
+      }
+      
+      // Session is invalid or doesn't exist
+      console.log('Session is invalid or expired:', err);
+      return null;
+    }
+  };
+
   // Validate session and fetch user data
   const validateSession = async () => {
     try {
@@ -52,11 +121,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const user = await account.get();
       return user;
     } catch (err) {
-      // If session is invalid, try to delete it
+      // If session is invalid, try to delete it but don't fail if deletion fails
       try {
         await account.deleteSession('current');
       } catch (deleteErr) {
-        console.error('Failed to delete invalid session:', deleteErr);
+        // Silently handle deletion errors - this is expected for invalid sessions
+        console.warn('Could not delete invalid session (this is normal):', deleteErr);
       }
       throw err;
     }
@@ -68,7 +138,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     const initializeAuth = async () => {
       try {
-        const user = await validateSession();
+        // Use the safer checkSession method that doesn't try to delete invalid sessions
+        const user = await checkSession();
         
         if (!mounted) return;
         
@@ -82,12 +153,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.log('Auth initialization error:', err);
         if (mounted) {
-          setState({
-            user: null,
-            profile: null,
-            isLoading: false,
-            error: null, // Don't set error for initial load
-          });
+          // If it's a network error, keep the loading state or set a more specific error
+          if (isNetworkError(err)) {
+            setState(prev => ({
+              ...prev,
+              isLoading: false,
+              error: 'Network connection error. Please check your internet connection.',
+            }));
+          } else {
+            setState({
+              user: null,
+              profile: null,
+              isLoading: false,
+              error: null, // Don't set error for initial load unless it's network-related
+            });
+          }
         }
       }
     };
@@ -100,8 +180,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, isLoading: true }));
       
-      // First validate the session is still good
-      await validateSession();
+      // First check the session is still good using the safer method
+      const user = await checkSession();
+      if (!user) {
+        throw new Error('Session is no longer valid');
+      }
       
       const response = await databases.listDocuments(
         DATABASE_ID,
@@ -144,11 +227,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.error('Profile fetch error:', err);
-      setState(prev => ({
-        ...prev,
-        error: err instanceof Error ? err.message : 'Failed to fetch profile',
-        isLoading: false,
-      }));
+      
+      // Handle network errors differently
+      if (isNetworkError(err)) {
+        setState(prev => ({
+          ...prev,
+          error: 'Network connection error. Please check your internet connection.',
+          isLoading: false,
+        }));
+      } else {
+        setState(prev => ({
+          ...prev,
+          error: err instanceof Error ? err.message : 'Failed to fetch profile',
+          isLoading: false,
+        }));
+      }
     }
   };
 
@@ -156,11 +249,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, isLoading: true, error: null }));
       
-      // Delete any existing sessions first
+      // Delete any existing sessions first (ignore errors)
       try {
         await account.deleteSession('current');
       } catch (err) {
-        // Ignore errors from deleting non-existent sessions
+        // Ignore errors from deleting non-existent or invalid sessions
+        console.warn('Could not delete existing session (this is normal):', err);
       }
       
       // Create new session
@@ -189,11 +283,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Create user account
       const user = await account.create(ID.unique(), data.email, data.password);
       
-      // Delete any existing sessions
+      // Delete any existing sessions (ignore errors)
       try {
         await account.deleteSession('current');
       } catch (err) {
-        // Ignore errors from deleting non-existent sessions
+        // Ignore errors from deleting non-existent or invalid sessions
+        console.warn('Could not delete existing session (this is normal):', err);
       }
       
       // Create new session
@@ -347,8 +442,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, isLoading: true, error: null }));
       
-      // Validate session and get user
-      const user = await validateSession();
+      // Check session and get user using the safer method
+      const user = await checkSession();
       setState(prev => ({ ...prev, user }));
       
       if (user) {
@@ -362,12 +457,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.error('Auth refresh error:', err);
-      setState({
-        user: null,
-        profile: null,
-        isLoading: false,
-        error: err instanceof Error ? err.message : 'Auth refresh failed',
-      });
+      
+      // Handle network errors vs auth errors differently
+      if (isNetworkError(err)) {
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: 'Network connection error. Please check your internet connection.',
+        }));
+      } else {
+        setState({
+          user: null,
+          profile: null,
+          isLoading: false,
+          error: err instanceof Error ? err.message : 'Auth refresh failed',
+        });
+      }
     }
   };
 
