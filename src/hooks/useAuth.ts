@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { User } from '@supabase/supabase-js';
-import { supabase, Profile } from '../lib/supabase';
+import { Models, Query, Permission, Role } from 'appwrite';
+import { account, databases, DATABASE_ID, COLLECTION_IDS } from '../lib/appwrite';
+import { Profile, ProfileInsert } from '../lib/database/appwrite-types';
 import { OAuthProvider } from '../lib/validations/auth';
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -14,41 +15,28 @@ export function useAuth() {
     
     const initializeAuth = async () => {
       try {
-        console.log('🔄 Initializing auth...');
+        console.log('🔄 Initializing Appwrite auth...');
         
-        // Get initial session with timeout
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Session timeout')), 10000)
-        );
+        // Get current user session
+        const user = await account.get();
         
-        const { data: { session }, error: sessionError } = await Promise.race([
-          sessionPromise,
-          timeoutPromise
-        ]) as any;
-
         if (!mounted) return;
 
-        if (sessionError) {
-          console.error('❌ Session error:', sessionError);
-          setError(sessionError.message);
-          setLoading(false);
-          return;
-        }
-
-        console.log('✅ Session retrieved:', session ? 'Found' : 'None');
-        setUser(session?.user ?? null);
+        console.log('✅ User session retrieved:', user ? 'Found' : 'None');
+        setUser(user);
         
-        if (session?.user) {
-          await fetchProfile(session.user.id);
+        if (user) {
+          // For OAuth users landing on homepage, auto-create profile if missing
+          await fetchProfile(user.$id, true);
         } else {
           setProfile(null);
           setLoading(false);
         }
       } catch (err) {
-        console.error('❌ Auth initialization error:', err);
+        console.log('ℹ️ No active session');
         if (mounted) {
-          setError(err instanceof Error ? err.message : 'Authentication failed');
+          setUser(null);
+          setProfile(null);
           setLoading(false);
         }
       }
@@ -56,72 +44,56 @@ export function useAuth() {
 
     initializeAuth();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('🔄 Auth state change:', event, session ? 'User present' : 'No user');
-        
-        if (!mounted) return;
-
-        try {
-          setUser(session?.user ?? null);
-          setError(null);
-          
-          if (session?.user) {
-            await fetchProfile(session.user.id);
-          } else {
-            setProfile(null);
-            setLoading(false);
-          }
-        } catch (err) {
-          console.error('❌ Auth state change error:', err);
-          if (mounted) {
-            setError(err instanceof Error ? err.message : 'Authentication state error');
-            setLoading(false);
-          }
-        }
-      }
-    );
-
     return () => {
       mounted = false;
-      subscription.unsubscribe();
     };
   }, []);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string, createIfMissing: boolean = false) => {
     try {
       console.log('🔄 Fetching profile for user:', userId);
       setLoading(true);
       
-      const profilePromise = supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-        
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 8000)
+      // Try to find profile by user_id using correct Appwrite Query syntax
+      const response = await databases.listDocuments(
+        DATABASE_ID, 
+        COLLECTION_IDS.PROFILES, 
+        [Query.equal('user_id', userId)]
       );
 
-      const { data, error } = await Promise.race([
-        profilePromise,
-        timeoutPromise
-      ]) as any;
-
-      if (error) {
-        console.error('❌ Profile fetch error:', error);
-        
-        // If profile doesn't exist, that's not necessarily an error for new users
-        if (error.code === 'PGRST116') {
-          console.log('ℹ️ No profile found - new user');
-          setProfile(null);
-        } else {
-          setError(error.message);
-        }
-      } else {
+      if (response.documents.length > 0) {
         console.log('✅ Profile fetched successfully');
-        setProfile(data);
+        setProfile(response.documents[0] as Profile);
+      } else {
+        console.log('ℹ️ No profile found - new user');
+        
+        if (createIfMissing) {
+          console.log('🔄 Creating basic profile for OAuth user...');
+          const currentUser = await account.get();
+          
+          const profileData: ProfileInsert = {
+            user_id: currentUser.$id,
+            full_name: currentUser.name || 'New User',
+            user_type: 'developer', // Default to developer, user can change later
+          };
+          
+          const newProfile = await databases.createDocument(
+            DATABASE_ID,
+            COLLECTION_IDS.PROFILES,
+            'unique()', // Or currentUser.$id if you prefer
+            profileData,
+            [
+              Permission.read(Role.any()), // Or Role.users() if profiles are not public
+              Permission.update(Role.user(currentUser.$id)),
+              Permission.delete(Role.user(currentUser.$id)),
+            ]
+          );
+          
+          console.log('✅ Basic profile created for OAuth user with permissions');
+          setProfile(newProfile as Profile);
+        } else {
+          setProfile(null);
+        }
       }
     } catch (err) {
       console.error('❌ Profile fetch exception:', err);
@@ -136,64 +108,65 @@ export function useAuth() {
       setLoading(true);
       setError(null);
       
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const session = await account.createEmailPasswordSession(email, password);
+      const user = await account.get();
       
-      if (error) {
-        setError(error.message);
-      }
+      setUser(user);
+      await fetchProfile(user.$id);
       
-      return { data, error };
+      return { data: { user, session }, error: null };
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Sign in failed');
       setError(error.message);
+      setLoading(false);
       return { data: null, error };
-    } finally {
-      // Don't set loading to false here - let auth state change handle it
     }
   };
 
-  const signUp = async (email: string, password: string, userData: Partial<Profile>) => {
+  const signUp = async (email: string, password: string, userData: Partial<ProfileInsert>) => {
     try {
       setLoading(true);
       setError(null);
       
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
+      // Create user account
+      const user = await account.create('unique()', email, password);
+      
+      // Create email session
+      await account.createEmailPasswordSession(email, password);
+      
+      // Get the authenticated user
+      const authenticatedUser = await account.get();
+      
+      // Create profile
+      const profileData: ProfileInsert = {
+        user_id: authenticatedUser.$id,
+        full_name: userData.full_name || '',
+        user_type: userData.user_type || 'developer',
+        ...userData,
+      };
+      
+      const profile = await databases.createDocument(
+        DATABASE_ID,
+        COLLECTION_IDS.PROFILES,
+        'unique()', // Or authenticatedUser.$id if you prefer
+        profileData,
+        [
+          Permission.read(Role.any()), // Or Role.users() if profiles are not public
+          Permission.update(Role.user(authenticatedUser.$id)),
+          Permission.delete(Role.user(authenticatedUser.$id)),
+        ]
+      );
 
-      if (data.user && !error) {
-        // Create profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert([
-            {
-              id: data.user.id,
-              ...userData,
-            },
-          ]);
+      setUser(authenticatedUser);
+      setProfile(profile as Profile);
+      setLoading(false);
 
-        if (profileError) {
-          console.error('❌ Profile creation error:', profileError);
-          setError(profileError.message);
-          return { data, error: profileError };
-        }
-      }
-
-      if (error) {
-        setError(error.message);
-      }
-
-      return { data, error };
+      return { data: { user: authenticatedUser, profile }, error: null };
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Sign up failed');
       setError(error.message);
+      setLoading(false);
       return { data: null, error };
-    } finally {
-      // Don't set loading to false here - let auth state change handle it
     }
   };
 
@@ -202,19 +175,14 @@ export function useAuth() {
       setLoading(true);
       setError(null);
       
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
+      // Redirect to OAuth provider - redirects to homepage after success/failure
+      account.createOAuth2Session(
+        provider as any,
+        `${window.location.origin}/`,
+        `${window.location.origin}/?error=oauth_failed`
+      );
       
-      if (error) {
-        setError(error.message);
-        setLoading(false);
-      }
-      
-      return { data, error };
+      return { data: null, error: null };
     } catch (err) {
       const error = err instanceof Error ? err : new Error('OAuth sign in failed');
       setError(error.message);
@@ -228,16 +196,12 @@ export function useAuth() {
       setLoading(true);
       setError(null);
       
-      const { error } = await supabase.auth.signOut();
+      await account.deleteSession('current');
       
-      if (error) {
-        setError(error.message);
-      } else {
-        setUser(null);
-        setProfile(null);
-      }
+      setUser(null);
+      setProfile(null);
       
-      return { error };
+      return { error: null };
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Sign out failed');
       setError(error.message);
@@ -248,25 +212,20 @@ export function useAuth() {
   };
 
   const updateProfile = async (updates: Partial<Profile>) => {
-    if (!user) return { error: new Error('No user logged in') };
+    if (!user || !profile) return { error: new Error('No user logged in') };
 
     try {
       setError(null);
       
-      const { data, error } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', user.id)
-        .select()
-        .single();
+      const updatedProfile = await databases.updateDocument(
+        DATABASE_ID,
+        COLLECTION_IDS.PROFILES,
+        profile.$id,
+        updates
+      );
 
-      if (!error && data) {
-        setProfile(data);
-      } else if (error) {
-        setError(error.message);
-      }
-
-      return { data, error };
+      setProfile(updatedProfile as Profile);
+      return { data: updatedProfile, error: null };
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Profile update failed');
       setError(error.message);
@@ -278,15 +237,12 @@ export function useAuth() {
     try {
       setError(null);
       
-      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset-password`,
-      });
+      await account.createRecovery(
+        email,
+        `${window.location.origin}/auth/reset-password`
+      );
       
-      if (error) {
-        setError(error.message);
-      }
-      
-      return { data, error };
+      return { data: { message: 'Recovery email sent' }, error: null };
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Password reset failed');
       setError(error.message);
@@ -294,19 +250,13 @@ export function useAuth() {
     }
   };
 
-  const updatePassword = async (password: string) => {
+  const updatePassword = async (password: string, oldPassword: string) => {
     try {
       setError(null);
       
-      const { data, error } = await supabase.auth.updateUser({
-        password,
-      });
+      await account.updatePassword(password, oldPassword);
       
-      if (error) {
-        setError(error.message);
-      }
-      
-      return { data, error };
+      return { data: { message: 'Password updated' }, error: null };
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Password update failed');
       setError(error.message);
@@ -320,24 +270,18 @@ export function useAuth() {
     setError(null);
     
     try {
-      const { data: { session }, error } = await supabase.auth.getSession();
+      const user = await account.get();
+      setUser(user);
       
-      if (error) {
-        setError(error.message);
-        setLoading(false);
-        return;
-      }
-      
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        await fetchProfile(session.user.id);
+      if (user) {
+        await fetchProfile(user.$id);
       } else {
         setProfile(null);
         setLoading(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Refresh failed');
+      setUser(null);
+      setProfile(null);
       setLoading(false);
     }
   };

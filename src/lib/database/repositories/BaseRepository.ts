@@ -1,36 +1,71 @@
-import { supabase } from '../connection';
-import { PostgrestError } from '@supabase/supabase-js';
+import { appwriteDb, dbConnection } from '../connection';
+import { DATABASE_ID, COLLECTION_IDS } from '../../appwrite';
+import type { AppwriteError, QueryOptions } from '../appwrite-types';
+import { Query, Permission, Role } from 'appwrite';
 
 /**
- * Base Repository class implementing common database operations
+ * Base Repository class implementing common database operations for Appwrite
  * Provides error handling, logging, and data validation
  */
 export abstract class BaseRepository<T, TInsert, TUpdate> {
-  protected tableName: string;
+  protected collectionName: string;
+  protected collectionId: string;
   protected logger: Console;
 
-  constructor(tableName: string) {
-    this.tableName = tableName;
+  constructor(collectionName: string) {
+    this.collectionName = collectionName;
+    this.collectionId = this.getCollectionId(collectionName);
     this.logger = console;
+  }
+
+  /**
+   * Map collection names to IDs
+   */
+  private getCollectionId(collectionName: string): string {
+    const mapping: Record<string, string> = {
+      'profiles': COLLECTION_IDS.PROFILES,
+      'skills': COLLECTION_IDS.SKILLS,
+      'user_skills': COLLECTION_IDS.USER_SKILLS,
+      'projects': COLLECTION_IDS.PROJECTS,
+      'project_tags': COLLECTION_IDS.PROJECT_TAGS,
+      'applications': COLLECTION_IDS.APPLICATIONS,
+      'conversations': COLLECTION_IDS.CONVERSATIONS,
+      'messages': COLLECTION_IDS.MESSAGES,
+      'badges': COLLECTION_IDS.BADGES,
+      'user_badges': COLLECTION_IDS.USER_BADGES,
+      'reviews': COLLECTION_IDS.REVIEWS,
+    };
+    
+    const id = mapping[collectionName];
+    if (!id) {
+      throw new Error(`Unknown collection: ${collectionName}`);
+    }
+    return id;
   }
 
   /**
    * Handle database errors with proper logging and user-friendly messages
    */
-  protected handleError(error: PostgrestError | Error, operation: string): never {
-    this.logger.error(`❌ Database error in ${this.tableName}.${operation}:`, error);
+  protected handleError(error: AppwriteError | Error, operation: string): never {
+    this.logger.error(`❌ Appwrite error in ${this.collectionName}.${operation}:`, error);
     
     if ('code' in error) {
-      // PostgreSQL error codes
+      // Appwrite error codes
       switch (error.code) {
-        case '23505': // Unique violation
-          throw new Error('A record with this information already exists');
-        case '23503': // Foreign key violation
-          throw new Error('Referenced record does not exist');
-        case '23514': // Check constraint violation
-          throw new Error('Data validation failed');
-        case 'PGRST116': // No rows found
+        case 400: // Bad Request
+          throw new Error('Invalid request data');
+        case 401: // Unauthorized
+          throw new Error('Authentication required');
+        case 403: // Forbidden
+          throw new Error('Permission denied');
+        case 404: // Not Found
           throw new Error('Record not found');
+        case 409: // Conflict
+          throw new Error('A record with this information already exists');
+        case 429: // Too Many Requests
+          throw new Error('Too many requests. Please try again later');
+        case 500: // Internal Server Error
+          throw new Error('Server error. Please try again later');
         default:
           throw new Error(`Database operation failed: ${error.message}`);
       }
@@ -42,99 +77,79 @@ export abstract class BaseRepository<T, TInsert, TUpdate> {
   /**
    * Log successful operations
    */
-  protected logSuccess(operation: string, data?: any): void {
-    this.logger.log(`✅ ${this.tableName}.${operation} completed successfully`, data ? { count: Array.isArray(data) ? data.length : 1 } : {});
+  protected logSuccess(operation: string, data?: unknown): void {
+    this.logger.log(`✅ ${this.collectionName}.${operation} completed successfully`, data ? { count: Array.isArray(data) ? data.length : 1 } : {});
   }
 
   /**
    * Validate data before database operations
    */
-  protected validateData(data: any, operation: string): void {
+  protected validateData(data: unknown, operation: string): void {
     if (!data) {
       throw new Error(`Invalid data provided for ${operation}`);
     }
     
-    if (typeof data === 'object' && Object.keys(data).length === 0) {
+    if (typeof data === 'object' && data !== null && Object.keys(data).length === 0) {
       throw new Error(`Empty data object provided for ${operation}`);
     }
   }
 
   /**
-   * Execute query with error handling and logging
+   * Build queries from options
    */
-  protected async executeQuery<R>(
-    queryBuilder: any,
-    operation: string,
-    expectSingle: boolean = false
-  ): Promise<R> {
-    try {
-      const { data, error } = expectSingle 
-        ? await queryBuilder.single()
-        : await queryBuilder;
-
-      if (error) {
-        this.handleError(error, operation);
-      }
-
-      this.logSuccess(operation, data);
-      return data as R;
-    } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      this.handleError(error as PostgrestError, operation);
-    }
+  protected buildQueries(options?: QueryOptions): string[] {
+    return dbConnection.buildQueries(options);
   }
 
   /**
    * Find record by ID
    */
   public async findById(id: string): Promise<T | null> {
-    const query = supabase
-      .from(this.tableName)
-      .select('*')
-      .eq('id', id);
-
     try {
-      const data = await this.executeQuery<T>(query, 'findById', true);
-      return data;
+      const document = await appwriteDb.getDocument(DATABASE_ID, this.collectionId, id);
+      this.logSuccess('findById', document);
+      return document as T;
     } catch (error) {
-      if (error.message.includes('Record not found')) {
+      if (error instanceof Error && error.message.includes('404')) {
         return null;
       }
-      throw error;
+      this.handleError(error as AppwriteError, 'findById');
     }
   }
 
   /**
    * Find all records with optional filtering
    */
-  public async findAll(filters?: Record<string, any>): Promise<T[]> {
-    let query = supabase.from(this.tableName).select('*');
-
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          query = query.eq(key, value);
-        }
-      });
+  public async findAll(options?: QueryOptions): Promise<T[]> {
+    try {
+      const queries = this.buildQueries(options);
+      const response = await appwriteDb.listDocuments(DATABASE_ID, this.collectionId, queries);
+      this.logSuccess('findAll', response.documents);
+      return response.documents as T[];
+    } catch (error) {
+      this.handleError(error as AppwriteError, 'findAll');
     }
-
-    return this.executeQuery<T[]>(query, 'findAll');
   }
 
   /**
    * Create new record
    */
-  public async create(data: TInsert): Promise<T> {
+  public async create(data: TInsert, permissions?: string[]): Promise<T> {
     this.validateData(data, 'create');
 
-    const query = supabase
-      .from(this.tableName)
-      .insert(data)
-      .select();
-
-    return this.executeQuery<T>(query, 'create', true);
+    try {
+      const document = await appwriteDb.createDocument(
+        DATABASE_ID, 
+        this.collectionId, 
+        'unique()', 
+        data as Record<string, unknown>,
+        permissions // Pass permissions here
+      );
+      this.logSuccess('create', document);
+      return document as T;
+    } catch (error) {
+      this.handleError(error as AppwriteError, 'create');
+    }
   }
 
   /**
@@ -143,50 +158,44 @@ export abstract class BaseRepository<T, TInsert, TUpdate> {
   public async update(id: string, data: TUpdate): Promise<T> {
     this.validateData(data, 'update');
 
-    const query = supabase
-      .from(this.tableName)
-      .update(data)
-      .eq('id', id)
-      .select();
-
-    return this.executeQuery<T>(query, 'update', true);
+    try {
+      const document = await appwriteDb.updateDocument(
+        DATABASE_ID, 
+        this.collectionId, 
+        id, 
+        data as Record<string, unknown>
+      );
+      this.logSuccess('update', document);
+      return document as T;
+    } catch (error) {
+      this.handleError(error as AppwriteError, 'update');
+    }
   }
 
   /**
    * Delete record
    */
   public async delete(id: string): Promise<void> {
-    const query = supabase
-      .from(this.tableName)
-      .delete()
-      .eq('id', id);
-
-    await this.executeQuery(query, 'delete');
+    try {
+      await appwriteDb.deleteDocument(DATABASE_ID, this.collectionId, id);
+      this.logSuccess('delete');
+    } catch (error) {
+      this.handleError(error as AppwriteError, 'delete');
+    }
   }
 
   /**
    * Count records with optional filtering
    */
-  public async count(filters?: Record<string, any>): Promise<number> {
-    let query = supabase
-      .from(this.tableName)
-      .select('*', { count: 'exact', head: true });
-
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          query = query.eq(key, value);
-        }
-      });
+  public async count(options?: QueryOptions): Promise<number> {
+    try {
+      const queries = this.buildQueries(options);
+      const response = await appwriteDb.listDocuments(DATABASE_ID, this.collectionId, queries);
+      this.logSuccess('count', response.total);
+      return response.total;
+    } catch (error) {
+      this.handleError(error as AppwriteError, 'count');
     }
-
-    const { count, error } = await query;
-
-    if (error) {
-      this.handleError(error, 'count');
-    }
-
-    return count || 0;
   }
 
   /**

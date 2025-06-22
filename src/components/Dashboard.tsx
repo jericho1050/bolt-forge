@@ -12,20 +12,20 @@ import {
   Award,
   Code
 } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
 
 interface DashboardProps {
   userType: 'developer' | 'company';
-  onNavigate: (page: string) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ userType, onNavigate }) => {
+const Dashboard: React.FC<DashboardProps> = ({ userType }) => {
   const [activeTab, setActiveTab] = useState('overview');
 
   const navigation = [
-    { id: 'overview', label: 'Overview', icon: Home },
-    { id: 'marketplace', label: 'Marketplace', icon: Search, onClick: () => onNavigate('marketplace') },
-    { id: 'messages', label: 'Messages', icon: MessageSquare, onClick: () => onNavigate('messages') },
-    { id: 'profile', label: 'Profile', icon: User, onClick: () => onNavigate('profile') },
+    { id: 'overview', label: 'Overview', icon: Home, to: '/dashboard' },
+    { id: 'marketplace', label: 'Marketplace', icon: Search, to: '/marketplace' },
+    { id: 'messages', label: 'Messages', icon: MessageSquare, to: '/messages' },
+    { id: 'profile', label: 'Profile', icon: User, to: '/profile' },
   ];
 
   const mockProjects = [
@@ -178,13 +178,13 @@ const Dashboard: React.FC<DashboardProps> = ({ userType, onNavigate }) => {
             </div>
             
             <div className="flex items-center space-x-4">
-              <button
-                onClick={() => onNavigate('marketplace')}
+              <Link
+                to="/marketplace"
                 className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2"
               >
                 <Plus className="w-4 h-4" />
                 <span>{userType === 'developer' ? 'Find Projects' : 'Post Project'}</span>
-              </button>
+              </Link>
             </div>
           </div>
         </div>
@@ -204,18 +204,18 @@ const Dashboard: React.FC<DashboardProps> = ({ userType, onNavigate }) => {
                 {navigation.map((item) => {
                   const Icon = item.icon;
                   return (
-                    <button
+                    <Link
                       key={item.id}
-                      onClick={item.onClick || (() => setActiveTab(item.id))}
+                      to={item.to}
                       className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                        activeTab === item.id
+                        window.location.pathname === item.to
                           ? 'bg-purple-50 text-purple-600 border border-purple-200'
                           : 'text-gray-600 hover:bg-gray-50'
                       }`}
                     >
                       <Icon className="w-5 h-5" />
                       <span>{item.label}</span>
-                    </button>
+                    </Link>
                   );
                 })}
               </nav>

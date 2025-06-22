@@ -15,7 +15,7 @@ This project uses the following technologies. Please use them exclusively unless
 - **Routing**: `TanStack Router` for all routing needs. Leverage its features like type-safe navigation, search parameter handling, and nested routes.
 - **Data Fetching & Server State**: `TanStack Query` is the standard for fetching, caching, and managing server state. Use its advanced features like query invalidation, optimistic updates, and pagination.
 - **Client State Management**: For simple component state, use `useState` and `useReducer`. For complex or shared client state, use `Zustand` with clear and modular store definitions.
-- **Backend**: Interact with `@supabase/supabase-js` for backend services like database, authentication, and storage. Follow Supabase best practices for security and scalability.
+- **Backend**: Interact with `@appwrite` for backend services like database, authentication, and storage. Follow supabase best practices for security and scalability.
 - **Schema Validation**: Use `zod` for all data validation, including form validation and API response validation. Ensure validation schemas are reusable and well-documented.
 
 # Development Practices

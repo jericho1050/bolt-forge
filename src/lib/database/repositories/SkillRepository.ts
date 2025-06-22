@@ -1,6 +1,15 @@
 import { BaseRepository } from './BaseRepository';
-import { Skill, SkillInsert, SkillUpdate, UserSkill, UserSkillInsert, UserSkillUpdate } from '../types';
-import { supabase } from '../connection';
+import { 
+  Skill, 
+  SkillInsert, 
+  SkillUpdate, 
+  UserSkill, 
+  UserSkillInsert, 
+  UserSkillUpdate 
+} from '../appwrite-types';
+import { appwriteDb } from '../connection';
+import { DATABASE_ID, COLLECTION_IDS } from '../../appwrite';
+import { Query } from 'appwrite';
 
 /**
  * Skill Repository
@@ -15,67 +24,99 @@ export class SkillRepository extends BaseRepository<Skill, SkillInsert, SkillUpd
    * Find skills by category
    */
   public async findByCategory(category: string): Promise<Skill[]> {
-    const query = supabase
-      .from(this.tableName)
-      .select('*')
-      .eq('category', category)
-      .order('name', { ascending: true });
-
-    return this.executeQuery<Skill[]>(query, 'findByCategory');
+    try {
+      const queries = [
+        Query.equal('category', category),
+        Query.orderAsc('name')
+      ];
+      
+      const response = await appwriteDb.listDocuments(DATABASE_ID, this.collectionId, queries);
+      this.logSuccess('findByCategory', response.documents);
+      return response.documents as Skill[];
+    } catch (error) {
+      this.handleError(error as Error, 'findByCategory');
+    }
   }
 
   /**
    * Get all categories
    */
   public async getCategories(): Promise<string[]> {
-    const { data, error } = await supabase
-      .from(this.tableName)
-      .select('category')
-      .order('category', { ascending: true });
-
-    if (error) {
-      this.handleError(error, 'getCategories');
+    try {
+      const response = await appwriteDb.listDocuments(DATABASE_ID, this.collectionId, [
+        Query.orderAsc('category')
+      ]);
+      
+      const categories = [...new Set(response.documents.map(item => (item as Skill).category))];
+      this.logSuccess('getCategories', categories);
+      return categories;
+    } catch (error) {
+      this.handleError(error as Error, 'getCategories');
     }
-
-    const categories = [...new Set(data?.map(item => item.category) || [])];
-    this.logSuccess('getCategories', categories);
-    return categories;
   }
 
   /**
    * Search skills by name
    */
   public async search(searchTerm: string): Promise<Skill[]> {
-    const query = supabase
-      .from(this.tableName)
-      .select('*')
-      .ilike('name', `%${searchTerm}%`)
-      .order('name', { ascending: true });
-
-    return this.executeQuery<Skill[]>(query, 'search');
+    try {
+      const queries = [
+        Query.search('name', searchTerm),
+        Query.orderAsc('name')
+      ];
+      
+      const response = await appwriteDb.listDocuments(DATABASE_ID, this.collectionId, queries);
+      this.logSuccess('search', response.documents);
+      return response.documents as Skill[];
+    } catch (error) {
+      this.handleError(error as Error, 'search');
+    }
   }
 
   /**
    * Get popular skills (most used)
    */
-  public async getPopular(limit: number = 20): Promise<any[]> {
-    const { data, error } = await supabase
-      .from('user_skills')
-      .select(`
-        skill_id,
-        skills(name, category, icon),
-        count()
-      `)
-      .not('skill_id', 'is', null)
-      .order('count', { ascending: false })
-      .limit(limit);
-
-    if (error) {
-      this.handleError(error, 'getPopular');
+  public async getPopular(limit: number = 20): Promise<Skill[]> {
+    try {
+      // In Appwrite, we'll need to get user skills and group by skill_id
+      // This is a simplified version - in a real app you might want to use a function or aggregate
+      const queries = [
+        Query.limit(limit * 5), // Get more records to process
+        Query.orderDesc('$createdAt')
+      ];
+      
+      const response = await appwriteDb.listDocuments(DATABASE_ID, COLLECTION_IDS.USER_SKILLS, queries);
+      
+      // Group by skill_id and count occurrences
+      const skillCounts: Record<string, number> = {};
+      response.documents.forEach(doc => {
+        const userSkill = doc as UserSkill;
+        skillCounts[userSkill.skill_id] = (skillCounts[userSkill.skill_id] || 0) + 1;
+      });
+      
+      // Sort by count and limit
+      const popularSkillIds = Object.entries(skillCounts)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, limit)
+        .map(([skillId]) => skillId);
+      
+      // Get skill details for popular skills
+      const popularSkills: Skill[] = [];
+      for (const skillId of popularSkillIds) {
+        try {
+          const skill = await appwriteDb.getDocument(DATABASE_ID, COLLECTION_IDS.SKILLS, skillId);
+          popularSkills.push(skill as Skill);
+        } catch {
+          // Skip if skill not found
+          console.warn(`Skill ${skillId} not found`);
+        }
+      }
+      
+      this.logSuccess('getPopular', popularSkills);
+      return popularSkills;
+    } catch (error) {
+      this.handleError(error as Error, 'getPopular');
     }
-
-    this.logSuccess('getPopular', data);
-    return data || [];
   }
 
   /**
@@ -113,17 +154,36 @@ export class UserSkillRepository extends BaseRepository<UserSkill, UserSkillInse
   /**
    * Find user skills with skill details
    */
-  public async findByUserId(userId: string): Promise<any[]> {
-    const query = supabase
-      .from(this.tableName)
-      .select(`
-        *,
-        skill:skills(*)
-      `)
-      .eq('user_id', userId)
-      .order('proficiency_level', { ascending: false });
-
-    return this.executeQuery(query, 'findByUserId');
+  public async findByUserId(userId: string): Promise<UserSkill[]> {
+    try {
+      const queries = [
+        Query.equal('user_id', userId),
+        Query.orderDesc('proficiency_level')
+      ];
+      
+      const response = await appwriteDb.listDocuments(DATABASE_ID, this.collectionId, queries);
+      
+      // Get skill details for each user skill
+      const userSkillsWithDetails = await Promise.all(
+        response.documents.map(async (doc) => {
+          const userSkill = doc as UserSkill;
+          try {
+            const skill = await appwriteDb.getDocument(DATABASE_ID, COLLECTION_IDS.SKILLS, userSkill.skill_id);
+            return {
+              ...userSkill,
+              skill: skill as Skill
+            };
+          } catch {
+            return userSkill;
+          }
+        })
+      );
+      
+      this.logSuccess('findByUserId', userSkillsWithDetails);
+      return userSkillsWithDetails;
+    } catch (error) {
+      this.handleError(error as Error, 'findByUserId');
+    }
   }
 
   /**
@@ -137,32 +197,45 @@ export class UserSkillRepository extends BaseRepository<UserSkill, UserSkillInse
       limit?: number;
       offset?: number;
     } = {}
-  ): Promise<{ data: any[]; count: number }> {
+  ): Promise<{ data: UserSkill[]; count: number }> {
     const { minProficiency = 0, verified, limit = 20, offset = 0 } = options;
 
-    let query = supabase
-      .from(this.tableName)
-      .select(`
-        *,
-        user:profiles(*)
-      `, { count: 'exact' })
-      .eq('skill_id', skillId)
-      .gte('proficiency_level', minProficiency)
-      .order('proficiency_level', { ascending: false })
-      .range(offset, offset + limit - 1);
+    try {
+      const queries = [
+        Query.equal('skill_id', skillId),
+        Query.greaterThanEqual('proficiency_level', minProficiency),
+        Query.orderDesc('proficiency_level'),
+        Query.limit(limit),
+        Query.offset(offset)
+      ];
 
-    if (verified !== undefined) {
-      query = query.eq('is_verified', verified);
+      if (verified !== undefined) {
+        queries.push(Query.equal('is_verified', verified));
+      }
+
+      const response = await appwriteDb.listDocuments(DATABASE_ID, this.collectionId, queries);
+      
+      // Get user profile details for each user skill
+      const userSkillsWithProfiles = await Promise.all(
+        response.documents.map(async (doc) => {
+          const userSkill = doc as UserSkill;
+          try {
+            const profile = await appwriteDb.getDocument(DATABASE_ID, COLLECTION_IDS.PROFILES, userSkill.user_id);
+            return {
+              ...userSkill,
+              user: profile
+            };
+          } catch {
+            return userSkill;
+          }
+        })
+      );
+
+      this.logSuccess('findUsersBySkill', userSkillsWithProfiles);
+      return { data: userSkillsWithProfiles, count: response.total };
+    } catch (error) {
+      this.handleError(error as Error, 'findUsersBySkill');
     }
-
-    const { data, error, count } = await query;
-
-    if (error) {
-      this.handleError(error, 'findUsersBySkill');
-    }
-
-    this.logSuccess('findUsersBySkill', data);
-    return { data: data || [], count: count || 0 };
   }
 
   /**
@@ -213,17 +286,23 @@ export class UserSkillRepository extends BaseRepository<UserSkill, UserSkillInse
    * Remove user skill
    */
   public async removeUserSkill(userId: string, skillId: string): Promise<void> {
-    const { error } = await supabase
-      .from(this.tableName)
-      .delete()
-      .eq('user_id', userId)
-      .eq('skill_id', skillId);
-
-    if (error) {
-      this.handleError(error, 'removeUserSkill');
+    try {
+      const queries = [
+        Query.equal('user_id', userId),
+        Query.equal('skill_id', skillId)
+      ];
+      
+      const response = await appwriteDb.listDocuments(DATABASE_ID, this.collectionId, queries);
+      
+      if (response.documents.length > 0) {
+        await appwriteDb.deleteDocument(DATABASE_ID, this.collectionId, response.documents[0].$id);
+        this.logSuccess('removeUserSkill');
+      } else {
+        throw new Error('User skill not found');
+      }
+    } catch (error) {
+      this.handleError(error as Error, 'removeUserSkill');
     }
-
-    this.logSuccess('removeUserSkill');
   }
 
   /**
@@ -233,7 +312,7 @@ export class UserSkillRepository extends BaseRepository<UserSkill, UserSkillInse
     total: number;
     verified: number;
     averageProficiency: number;
-    topSkills: any[];
+    topSkills: UserSkill[];
   }> {
     const userSkills = await this.findByUserId(userId);
 

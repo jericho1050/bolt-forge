@@ -1,4 +1,4 @@
-import { Client, Databases, Storage } from 'node-appwrite';
+import { Client, Databases, Storage, Permission, Role, ID } from 'node-appwrite';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -27,11 +27,30 @@ const storage = new Storage(client);
 
 const DATABASE_ID = 'bolt-forge-db';
 
+// Default Permission Sets
+const PERM_PUBLIC_READ_USERS_CREATE = [
+  Permission.read(Role.any()),
+  Permission.create(Role.users()),
+  // Document-level permissions will handle update/delete for specific users
+];
+
+const PERM_USERS_READ_USERS_CREATE = [
+  Permission.read(Role.users()),
+  Permission.create(Role.users()),
+  // Document-level permissions will handle update/delete for specific users
+];
+
+const PERM_PUBLIC_READ_ONLY = [
+  Permission.read(Role.any()),
+  // Create, Update, Delete typically admin/server-side only for these
+];
+
 // Collection definitions
 const collections = [
   {
     id: 'profiles',
     name: 'Profiles',
+    permissions: PERM_PUBLIC_READ_USERS_CREATE,
     attributes: [
       { key: 'user_id', type: 'string', required: true, size: 255 },
       { key: 'user_type', type: 'string', required: true, size: 50 },
@@ -66,6 +85,7 @@ const collections = [
   {
     id: 'skills',
     name: 'Skills',
+    permissions: PERM_PUBLIC_READ_ONLY,
     attributes: [
       { key: 'name', type: 'string', required: true, size: 255 },
       { key: 'category', type: 'string', required: true, size: 100 },
@@ -80,6 +100,7 @@ const collections = [
   {
     id: 'user_skills',
     name: 'User Skills',
+    permissions: PERM_USERS_READ_USERS_CREATE,
     attributes: [
       { key: 'user_id', type: 'string', required: true, size: 255 },
       { key: 'skill_id', type: 'string', required: true, size: 255 },
@@ -96,8 +117,9 @@ const collections = [
   {
     id: 'projects',
     name: 'Projects',
+    permissions: PERM_PUBLIC_READ_USERS_CREATE,
     attributes: [
-      { key: 'company_id', type: 'string', required: true, size: 255 },
+      { key: 'company_id', type: 'string', required: true, size: 255 }, // This should be a user_id of a company-type user
       { key: 'title', type: 'string', required: true, size: 255 },
       { key: 'description', type: 'string', required: true, size: 2000 },
       { key: 'requirements', type: 'string', required: false, size: 2000 },
@@ -125,6 +147,7 @@ const collections = [
   {
     id: 'project_tags',
     name: 'Project Tags',
+    permissions: PERM_PUBLIC_READ_USERS_CREATE,
     attributes: [
       { key: 'project_id', type: 'string', required: true, size: 255 },
       { key: 'skill_id', type: 'string', required: true, size: 255 },
@@ -139,6 +162,7 @@ const collections = [
   {
     id: 'applications',
     name: 'Applications',
+    permissions: PERM_USERS_READ_USERS_CREATE,
     attributes: [
       { key: 'project_id', type: 'string', required: true, size: 255 },
       { key: 'developer_id', type: 'string', required: true, size: 255 },
@@ -158,6 +182,7 @@ const collections = [
   {
     id: 'conversations',
     name: 'Conversations',
+    permissions: PERM_USERS_READ_USERS_CREATE,
     attributes: [
       { key: 'participant_1_id', type: 'string', required: true, size: 255 },
       { key: 'participant_2_id', type: 'string', required: true, size: 255 },
@@ -174,6 +199,7 @@ const collections = [
   {
     id: 'messages',
     name: 'Messages',
+    permissions: PERM_USERS_READ_USERS_CREATE,
     attributes: [
       { key: 'conversation_id', type: 'string', required: true, size: 255 },
       { key: 'sender_id', type: 'string', required: true, size: 255 },
@@ -190,6 +216,7 @@ const collections = [
   {
     id: 'badges',
     name: 'Badges',
+    permissions: PERM_PUBLIC_READ_ONLY,
     attributes: [
       { key: 'name', type: 'string', required: true, size: 255 },
       { key: 'description', type: 'string', required: true, size: 500 },
@@ -206,6 +233,7 @@ const collections = [
   {
     id: 'user_badges',
     name: 'User Badges',
+    permissions: PERM_USERS_READ_USERS_CREATE, // System/Admin might create, user reads
     attributes: [
       { key: 'user_id', type: 'string', required: true, size: 255 },
       { key: 'badge_id', type: 'string', required: true, size: 255 },
@@ -221,6 +249,7 @@ const collections = [
   {
     id: 'reviews',
     name: 'Reviews',
+    permissions: PERM_PUBLIC_READ_USERS_CREATE,
     attributes: [
       { key: 'project_id', type: 'string', required: true, size: 255 },
       { key: 'reviewer_id', type: 'string', required: true, size: 255 },
@@ -240,9 +269,9 @@ const collections = [
 
 // Storage buckets
 const buckets = [
-  { id: 'avatars', name: 'Avatars', permissions: ['read("any")'] },
-  { id: 'project_files', name: 'Project Files', permissions: ['read("any")'] },
-  { id: 'message_files', name: 'Message Files', permissions: ['read("users")'] },
+  { id: 'avatars', name: 'Avatars', permissions: [Permission.read(Role.any()), Permission.create(Role.users()), Permission.update(Role.users()), Permission.delete(Role.users())] }, // Users manage their own avatars
+  { id: 'project_files', name: 'Project Files', permissions: [Permission.read(Role.any()), Permission.create(Role.users())] }, // Project owners (users) upload, anyone can read
+  { id: 'message_files', name: 'Message Files', permissions: [Permission.read(Role.users()), Permission.create(Role.users())] }, // Only involved users
 ];
 
 async function createDatabase() {
@@ -263,7 +292,8 @@ async function createDatabase() {
 async function createCollection(collection) {
   try {
     console.log(`📁 Creating collection: ${collection.name}`);
-    await databases.createCollection(DATABASE_ID, collection.id, collection.name);
+    // Pass permissions array to createCollection, defaulting to empty array if not provided
+    await databases.createCollection(DATABASE_ID, collection.id, collection.name, collection.permissions || []);
     console.log(`✅ Collection ${collection.name} created successfully`);
   } catch (error) {
     if (error.code === 409) {
@@ -351,6 +381,22 @@ async function main() {
 
     // Create collections
     for (const collection of collections) {
+      // Delete collection if it exists, to ensure permissions are applied
+      try {
+        await databases.getCollection(DATABASE_ID, collection.id);
+        console.log(`🗑️ Deleting existing collection: ${collection.name} to re-apply permissions...`);
+        await databases.deleteCollection(DATABASE_ID, collection.id);
+        console.log(`✅ Collection ${collection.name} deleted.`);
+        // Wait a bit for deletion to propagate
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error) {
+        if (error.code !== 404) { // If error is not "not found", then it's an issue
+          console.error(`❌ Error checking/deleting collection ${collection.name}:`, error);
+          throw error;
+        }
+        // If 404, collection doesn't exist, so proceed to create
+      }
+
       await createCollection(collection);
       
       // Wait a bit for collection to be ready
@@ -382,13 +428,25 @@ async function main() {
     // Create storage buckets
     console.log('📦 Creating storage buckets...');
     for (const bucket of buckets) {
+       try {
+        await storage.getBucket(bucket.id);
+        console.log(`🗑️ Deleting existing bucket: ${bucket.name} to re-apply permissions...`);
+        await storage.deleteBucket(bucket.id);
+        console.log(`✅ Bucket ${bucket.name} deleted.`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        if (error.code !== 404) {
+          console.error(`❌ Error checking/deleting bucket ${bucket.name}:`, error);
+          throw error;
+        }
+      }
       await createBucket(bucket);
     }
 
     console.log('\n🎉 Appwrite schema setup completed successfully!');
     console.log('\nNext steps:');
-    console.log('1. Run the data migration script to populate initial data');
-    console.log('2. Update your application code to use Appwrite instead of Supabase');
+    console.log('1. Run the data migration script to populate initial data (if applicable).');
+    console.log('2. Test your application thoroughly, especially user sign-up and data creation.');
     
   } catch (error) {
     console.error('\n💥 Schema setup failed:', error);
