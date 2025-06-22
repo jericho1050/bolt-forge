@@ -58,15 +58,15 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
     blockDurationMs: 15 * 60 * 1000, // 15 minutes block
   });
 
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, user, isInitialized } = useAuth();
 
   // Close modal when user is authenticated
   useEffect(() => {
-    if (user && isOpen) {
+    if (user && isOpen && isInitialized) {
       console.log('✅ User authenticated, closing modal');
       onClose();
     }
-  }, [user, isOpen, onClose]);
+  }, [user, isOpen, isInitialized, onClose]);
 
   useEffect(() => {
     if (isOpen) {
@@ -85,13 +85,6 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
   ) => {
     const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
     setSignUpData(prev => ({ ...prev, [field]: value }));
-    
-    // Real-time validation
-    if (value) {
-      signUpValidation.validateField(field, value, signUpData);
-    } else {
-      signUpValidation.clearFieldError(field);
-    }
   };
 
   const handleSignInChange = (field: keyof SignInFormData) => (
@@ -99,13 +92,6 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
   ) => {
     const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
     setSignInData(prev => ({ ...prev, [field]: value }));
-    
-    // Real-time validation
-    if (value) {
-      signInValidation.validateField(field, value, signInData);
-    } else {
-      signInValidation.clearFieldError(field);
-    }
   };
 
   const handleSignUpSubmit = async (e: React.FormEvent) => {
@@ -117,7 +103,7 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
     setGeneralError(null);
 
     try {
-      console.log('🔄 Starting sign up process');
+      console.log('🔄 Starting sign up validation and submission');
       
       const { isValid, errors } = await signUpValidation.validateForm(signUpData);
       
@@ -127,30 +113,15 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
         return;
       }
 
-      const userData = {
-        user_type: signUpData.userType,
-        full_name: signUpData.fullName || '',
-        location: signUpData.location || '',
-        phone: signUpData.phone || '',
-        ...(signUpData.userType === 'company' && { 
-          company_name: signUpData.companyName || '' 
-        }),
-      };
-
-      console.log('🔄 Calling signUp with data:', { email: signUpData.email, userData });
+      console.log('✅ Form validation passed, creating account...');
       
-      const { error } = await signUp(signUpData.email, signUpData.password, userData);
+      await signUp(signUpData);
       
-      if (error) {
-        console.error('❌ Sign up error:', error);
-        setGeneralError(error.message);
-      } else {
-        console.log('✅ Sign up successful');
-        // Modal will close automatically when user state updates
-      }
+      console.log('✅ Sign up successful');
+      // Modal will close automatically when user state updates
     } catch (err) {
-      console.error('❌ Sign up exception:', err);
-      setGeneralError('An unexpected error occurred. Please try again.');
+      console.error('❌ Sign up error:', err);
+      setGeneralError(err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -167,7 +138,7 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
     setGeneralError(null);
 
     try {
-      console.log('🔄 Starting sign in process');
+      console.log('🔄 Starting sign in validation and submission');
       
       const { isValid } = await signInValidation.validateForm(signInData);
       
@@ -177,29 +148,28 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
         return;
       }
 
-      // For now, assume input is email (Appwrite requires email for auth)
-      const email = signInData.emailOrUsername;
+      console.log('✅ Form validation passed, signing in...');
       
-      console.log('🔄 Calling signIn with email:', email);
+      await signIn(signInData);
       
-      const { error } = await signIn(email, signInData.password);
-      
-      if (error) {
-        console.error('❌ Sign in error:', error);
-        rateLimit.recordAttempt();
-        setGeneralError(error.message);
-      } else {
-        console.log('✅ Sign in successful');
-        rateLimit.reset();
-        // Modal will close automatically when user state updates
-      }
+      console.log('✅ Sign in successful');
+      rateLimit.reset();
+      // Modal will close automatically when user state updates
     } catch (err) {
-      console.error('❌ Sign in exception:', err);
+      console.error('❌ Sign in error:', err);
       rateLimit.recordAttempt();
-      setGeneralError('An unexpected error occurred. Please try again.');
+      setGeneralError(err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const switchMode = () => {
+    if (loading) return;
+    setIsSignUp(!isSignUp);
+    setGeneralError(null);
+    signUpValidation.clearErrors();
+    signInValidation.clearErrors();
   };
 
   return (
@@ -259,13 +229,7 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
 
           <div className="mt-6 text-center">
             <button
-              onClick={() => {
-                if (loading) return;
-                setIsSignUp(!isSignUp);
-                setGeneralError(null);
-                signUpValidation.clearErrors();
-                signInValidation.clearErrors();
-              }}
+              onClick={switchMode}
               disabled={loading}
               className="text-purple-600 hover:text-purple-700 transition-colors disabled:opacity-50"
             >

@@ -10,17 +10,32 @@ export const Route = createFileRoute('/dashboard')({
 });
 
 function DashboardComponent() {
-  const { user, profile, isLoading, error, refreshAuth } = useAuth();
+  const { user, profile, isLoading, error, refreshAuth, isInitialized } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!isLoading && !user) {
+    // Only redirect if auth is fully initialized and there's no user
+    if (isInitialized && !isLoading && !user) {
+      console.log('❌ No authenticated user, redirecting to home...');
       navigate({ to: '/' });
     }
-  }, [user, isLoading, navigate]);
+  }, [user, isLoading, isInitialized, navigate]);
 
-  if (isLoading) return <LoadingScreen />;
-  if (error) return <ErrorScreen error={error} onRetry={refreshAuth} />;
-  if (!user) return null;
+  // Show loading while auth is initializing or loading
+  if (!isInitialized || isLoading) {
+    return <LoadingScreen />;
+  }
+
+  // Show error screen if there's an auth error
+  if (error) {
+    return <ErrorScreen error={error} onRetry={refreshAuth} />;
+  }
+
+  // Redirect to home if no user (this will be handled by useEffect)
+  if (!user) {
+    return <LoadingScreen />;
+  }
+
+  // Show dashboard
   return <Dashboard userType={profile?.user_type ?? 'developer'} />;
-} 
+}

@@ -5,6 +5,7 @@ interface ValidationState {
   errors: Record<string, string>;
   isValid: boolean;
   isValidating: boolean;
+  touched: Record<string, boolean>;
 }
 
 export function useAuthValidation<T>(schema: ZodSchema<T>) {
@@ -12,10 +13,23 @@ export function useAuthValidation<T>(schema: ZodSchema<T>) {
     errors: {},
     isValid: false,
     isValidating: false,
+    touched: {},
   });
+
+  const markFieldTouched = useCallback((fieldName: string) => {
+    setValidation(prev => ({
+      ...prev,
+      touched: { ...prev.touched, [fieldName]: true },
+    }));
+  }, []);
 
   const validateField = useCallback(
     (fieldName: string, value: any, formData?: Partial<T>) => {
+      // Only validate if field has been touched
+      if (!validation.touched[fieldName]) {
+        return true;
+      }
+
       try {
         // For single field validation, create a partial object
         const dataToValidate = formData || { [fieldName]: value };
@@ -43,7 +57,7 @@ export function useAuthValidation<T>(schema: ZodSchema<T>) {
         return false;
       }
     },
-    [schema]
+    [schema, validation.touched]
   );
 
   const validateForm = useCallback(
@@ -52,25 +66,31 @@ export function useAuthValidation<T>(schema: ZodSchema<T>) {
       
       try {
         await schema.parseAsync(data);
-        setValidation({
+        setValidation(prev => ({
+          ...prev,
           errors: {},
           isValid: true,
           isValidating: false,
-        });
+        }));
         return { isValid: true, errors: {} };
       } catch (error) {
         if (error instanceof ZodError) {
           const errors: Record<string, string> = {};
+          const touched: Record<string, boolean> = {};
+          
           error.errors.forEach(err => {
             const fieldName = err.path[0] as string;
             errors[fieldName] = err.message;
+            touched[fieldName] = true;
           });
           
-          setValidation({
+          setValidation(prev => ({
+            ...prev,
             errors,
+            touched: { ...prev.touched, ...touched },
             isValid: false,
             isValidating: false,
-          });
+          }));
           
           return { isValid: false, errors };
         }
@@ -87,6 +107,7 @@ export function useAuthValidation<T>(schema: ZodSchema<T>) {
       errors: {},
       isValid: false,
       isValidating: false,
+      touched: {},
     });
   }, []);
 
@@ -103,5 +124,7 @@ export function useAuthValidation<T>(schema: ZodSchema<T>) {
     validateForm,
     clearErrors,
     clearFieldError,
+    markFieldTouched,
   };
 }
+</action>

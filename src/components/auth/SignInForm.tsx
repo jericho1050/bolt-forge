@@ -22,14 +22,31 @@ const SignInForm: React.FC<SignInFormProps> = ({
   rateLimit,
   loading
 }) => {
+  const handleFieldChange = (field: keyof SignInFormData) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    onFormDataChange(field)(e);
+    
+    // Only validate if field has been touched and has a value
+    if (validation.touched[field] && e.target.value) {
+      validation.validateField(field, e.target.value, formData);
+    }
+  };
+
+  const handleFieldBlur = (field: keyof SignInFormData) => () => {
+    validation.markFieldTouched(field);
+    if (formData[field]) {
+      validation.validateField(field, formData[field], formData);
+    }
+  };
+
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <FormField
         label="Email or Username"
         name="emailOrUsername"
         value={formData.emailOrUsername}
-        onChange={onFormDataChange('emailOrUsername')}
-        error={validation.errors.emailOrUsername}
+        onChange={handleFieldChange('emailOrUsername')}
+        onBlur={handleFieldBlur('emailOrUsername')}
+        error={validation.touched.emailOrUsername ? validation.errors.emailOrUsername : undefined}
         placeholder="Enter email or username"
         required
         disabled={loading}
@@ -42,8 +59,9 @@ const SignInForm: React.FC<SignInFormProps> = ({
         name="password"
         type="password"
         value={formData.password}
-        onChange={onFormDataChange('password')}
-        error={validation.errors.password}
+        onChange={handleFieldChange('password')}
+        onBlur={handleFieldBlur('password')}
+        error={validation.touched.password ? validation.errors.password : undefined}
         placeholder="Enter your password"
         required
         disabled={loading}

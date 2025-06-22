@@ -2,7 +2,7 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 function LoadingScreen() {
-  const { user, profile, refreshAuth } = useAuth();
+  const { user, profile, refreshAuth, isInitialized } = useAuth();
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -10,13 +10,14 @@ function LoadingScreen() {
         <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
         <p className="text-gray-600 mb-2">Loading...</p>
         <p className="text-sm text-gray-500">
-          Initializing authentication
+          {!isInitialized ? 'Initializing authentication...' : 'Please wait...'}
         </p>
         
         {/* Debug info in development */}
         {process.env.NODE_ENV === 'development' && (
-          <div className="mt-4 p-3 bg-gray-100 rounded-lg text-left text-xs">
+          <div className="mt-4 p-3 bg-gray-100 rounded-lg text-left text-xs max-w-xs">
             <p><strong>Debug Info:</strong></p>
+            <p>Initialized: {isInitialized ? '✅' : '❌'}</p>
             <p>User: {user ? '✅' : '❌'}</p>
             <p>Profile: {profile ? '✅' : '❌'}</p>
             <button 
@@ -32,4 +33,4 @@ function LoadingScreen() {
   );
 }
 
-export default LoadingScreen; 
+export default LoadingScreen;

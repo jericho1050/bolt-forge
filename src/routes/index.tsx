@@ -9,15 +9,22 @@ export const Route = createFileRoute('/')({
 });
 
 function IndexComponent() {
-  const { user, profile, isLoading } = useAuth();
+  const { user, profile, isLoading, isInitialized } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!isLoading && user && profile) {
+    // Only redirect if we have both user and profile, and auth is fully initialized
+    if (isInitialized && !isLoading && user && profile) {
+      console.log('✅ User authenticated with profile, redirecting to dashboard...');
       navigate({ to: '/dashboard', replace: true });
     }
-  }, [user, profile, isLoading, navigate]);
+  }, [user, profile, isLoading, isInitialized, navigate]);
 
-  if (isLoading) return <LoadingScreen />;
+  // Show loading while initializing auth
+  if (!isInitialized || isLoading) {
+    return <LoadingScreen />;
+  }
+
+  // Show landing page if not authenticated
   return <LandingPage onSignIn={() => {}} onNavigate={() => {}} />;
-} 
+}

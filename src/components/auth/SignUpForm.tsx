@@ -20,10 +20,30 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
   validation,
   loading
 }) => {
+  const handleFieldChange = (field: keyof SignUpFormData) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    onFormDataChange(field)(e);
+    
+    // Only validate if field has been touched and has a value
+    if (validation.touched[field] && e.target.value) {
+      validation.validateField(field, e.target.value, formData);
+    }
+  };
+
+  const handleFieldBlur = (field: keyof SignUpFormData) => () => {
+    validation.markFieldTouched(field);
+    if (formData[field] !== undefined && formData[field] !== '') {
+      validation.validateField(field, formData[field], formData);
+    }
+  };
+
   const handleUserTypeChange = (userType: 'developer' | 'company') => {
     onFormDataChange('userType')({
       target: { name: 'userType', value: userType, type: 'text' }
     } as React.ChangeEvent<HTMLInputElement>);
+    
+    // Mark as touched and validate immediately for user type
+    validation.markFieldTouched('userType');
+    validation.validateField('userType', userType, { ...formData, userType });
   };
 
   return (
@@ -61,6 +81,9 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
             <div className="text-sm font-medium">Company</div>
           </button>
         </div>
+        {validation.touched.userType && validation.errors.userType && (
+          <p className="text-red-600 text-sm mt-1">{validation.errors.userType}</p>
+        )}
       </div>
 
       <FormField
@@ -68,8 +91,9 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
         name="email"
         type="email"
         value={formData.email}
-        onChange={onFormDataChange('email')}
-        error={validation.errors.email}
+        onChange={handleFieldChange('email')}
+        onBlur={handleFieldBlur('email')}
+        error={validation.touched.email ? validation.errors.email : undefined}
         placeholder="Enter your email"
         required
         disabled={loading}
@@ -81,8 +105,9 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
         label="Username"
         name="username"
         value={formData.username}
-        onChange={onFormDataChange('username')}
-        error={validation.errors.username}
+        onChange={handleFieldChange('username')}
+        onBlur={handleFieldBlur('username')}
+        error={validation.touched.username ? validation.errors.username : undefined}
         placeholder="Choose a username"
         required
         disabled={loading}
@@ -95,8 +120,9 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
         name="password"
         type="password"
         value={formData.password}
-        onChange={onFormDataChange('password')}
-        error={validation.errors.password}
+        onChange={handleFieldChange('password')}
+        onBlur={handleFieldBlur('password')}
+        error={validation.touched.password ? validation.errors.password : undefined}
         placeholder="Create a strong password"
         required
         disabled={loading}
@@ -104,7 +130,9 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
         icon={<Lock className="w-5 h-5" />}
         showPasswordToggle
       >
-        <PasswordStrengthIndicator password={formData.password} />
+        {validation.touched.password && formData.password && (
+          <PasswordStrengthIndicator password={formData.password} />
+        )}
       </FormField>
 
       <FormField
@@ -112,8 +140,9 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
         name="confirmPassword"
         type="password"
         value={formData.confirmPassword}
-        onChange={onFormDataChange('confirmPassword')}
-        error={validation.errors.confirmPassword}
+        onChange={handleFieldChange('confirmPassword')}
+        onBlur={handleFieldBlur('confirmPassword')}
+        error={validation.touched.confirmPassword ? validation.errors.confirmPassword : undefined}
         placeholder="Confirm your password"
         required
         disabled={loading}
@@ -126,8 +155,9 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
         label="Full Name"
         name="fullName"
         value={formData.fullName || ''}
-        onChange={onFormDataChange('fullName')}
-        error={validation.errors.fullName}
+        onChange={handleFieldChange('fullName')}
+        onBlur={handleFieldBlur('fullName')}
+        error={validation.touched.fullName ? validation.errors.fullName : undefined}
         placeholder="Enter your full name"
         disabled={loading}
         autoComplete="name"
@@ -138,8 +168,9 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
           label="Company Name"
           name="companyName"
           value={formData.companyName || ''}
-          onChange={onFormDataChange('companyName')}
-          error={validation.errors.companyName}
+          onChange={handleFieldChange('companyName')}
+          onBlur={handleFieldBlur('companyName')}
+          error={validation.touched.companyName ? validation.errors.companyName : undefined}
           placeholder="Enter company name"
           required
           disabled={loading}
@@ -151,8 +182,9 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
         label="Location"
         name="location"
         value={formData.location || ''}
-        onChange={onFormDataChange('location')}
-        error={validation.errors.location}
+        onChange={handleFieldChange('location')}
+        onBlur={handleFieldBlur('location')}
+        error={validation.touched.location ? validation.errors.location : undefined}
         placeholder="City, Country"
         disabled={loading}
         autoComplete="address-level2"
@@ -163,8 +195,9 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
         name="phone"
         type="tel"
         value={formData.phone || ''}
-        onChange={onFormDataChange('phone')}
-        error={validation.errors.phone}
+        onChange={handleFieldChange('phone')}
+        onBlur={handleFieldBlur('phone')}
+        error={validation.touched.phone ? validation.errors.phone : undefined}
         placeholder="+1 (555) 123-4567"
         disabled={loading}
         autoComplete="tel"
@@ -176,7 +209,10 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
           type="checkbox"
           id="agreeToTerms"
           checked={formData.agreeToTerms}
-          onChange={onFormDataChange('agreeToTerms')}
+          onChange={(e) => {
+            onFormDataChange('agreeToTerms')(e);
+            validation.markFieldTouched('agreeToTerms');
+          }}
           disabled={loading}
           className="mt-1 w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 disabled:opacity-50"
         />
@@ -191,7 +227,7 @@ const SignUpForm: React.FC<SignUpFormProps> = ({
           </a>
         </label>
       </div>
-      {validation.errors.agreeToTerms && (
+      {validation.touched.agreeToTerms && validation.errors.agreeToTerms && (
         <p className="text-red-600 text-sm">{validation.errors.agreeToTerms}</p>
       )}
 

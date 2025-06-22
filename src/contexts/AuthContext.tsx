@@ -9,6 +9,7 @@ interface AuthState {
   profile: Profile | null;
   isLoading: boolean;
   error: string | null;
+  isInitialized: boolean;
 }
 
 interface AuthContextType extends AuthState {
@@ -35,6 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     profile: null,
     isLoading: true,
     error: null,
+    isInitialized: false,
   });
 
   // Helper function to retry operations with exponential backoff
@@ -106,48 +108,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Validate session and fetch user data
-  const validateSession = async () => {
-    try {
-      // First try to get the current session
-      const session = await account.getSession('current');
-      
-      if (!session) {
-        throw new Error('No active session');
-      }
-
-      // Then get the user data
-      const user = await account.get();
-      return user;
-    } catch (err) {
-      // If session is invalid, try to delete it but don't fail if deletion fails
-      try {
-        await account.deleteSession('current');
-      } catch (deleteErr) {
-        // Silently handle deletion errors - this is expected for invalid sessions
-        console.warn('Could not delete invalid session (this is normal):', deleteErr);
-      }
-      throw err;
-    }
-  };
-
   // Initialize auth state
   useEffect(() => {
     let mounted = true;
     
     const initializeAuth = async () => {
       try {
+        console.log('🔄 Initializing authentication...');
+        
         // Use the safer checkSession method that doesn't try to delete invalid sessions
         const user = await checkSession();
         
         if (!mounted) return;
         
-        setState(prev => ({ ...prev, user }));
+        setState(prev => ({ ...prev, user, isInitialized: true }));
         
         if (user) {
+          console.log('✅ User session found, fetching profile...');
           await fetchProfile(user.$id);
         } else {
-          setState(prev => ({ ...prev, isLoading: false }));
+          console.log('ℹ️ No active session found');
+          setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
         }
       } catch (err) {
         console.log('Auth initialization error:', err);
@@ -157,6 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setState(prev => ({
               ...prev,
               isLoading: false,
+              isInitialized: true,
               error: 'Network connection error. Please check your internet connection.',
             }));
           } else {
@@ -164,7 +146,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               user: null,
               profile: null,
               isLoading: false,
-              error: null, // Don't set error for initial load unless it's network-related
+              error: null,
+              isInitialized: true,
             });
           }
         }
@@ -192,12 +175,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
 
       if (response.documents.length > 0) {
+        console.log('✅ Profile found and loaded');
         setState(prev => ({
           ...prev,
           profile: response.documents[0] as Profile,
           isLoading: false,
         }));
       } else {
+        console.log('ℹ️ No profile found, creating basic profile...');
         // Auto-create profile for new users
         const currentUser = await account.get();
         const profileData: ProfileInsert = {
@@ -218,6 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ]
         );
         
+        console.log('✅ Basic profile created');
         setState(prev => ({
           ...prev,
           profile: newProfile as Profile,
@@ -246,6 +232,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (data: SignInFormData) => {
     try {
+      console.log('🔄 Starting sign in process...');
       setState(prev => ({ ...prev, isLoading: true, error: null }));
       
       // Delete any existing sessions first (ignore errors)
@@ -259,13 +246,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Create new session
       await account.createEmailPasswordSession(data.emailOrUsername, data.password);
       
-      // Validate the new session
-      const user = await validateSession();
+      // Get user data
+      const user = await account.get();
+      console.log('✅ Sign in successful, user:', user.email);
       
       setState(prev => ({ ...prev, user }));
       await fetchProfile(user.$id);
     } catch (err) {
-      console.error('Sign in error:', err);
+      console.error('❌ Sign in error:', err);
       setState(prev => ({
         ...prev,
         error: err instanceof Error ? err.message : 'Sign in failed',
@@ -277,24 +265,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (data: SignUpFormData) => {
     try {
+      console.log('🔄 Starting sign up process...');
       setState(prev => ({ ...prev, isLoading: true, error: null }));
       
       // Create user account
-      const user = await account.create(ID.unique(), data.email, data.password);
+      const user = await account.create(ID.unique(), data.email, data.password, data.fullName);
+      console.log('✅ User account created:', user.email);
       
       // Delete any existing sessions (ignore errors)
       try {
         await account.deleteSession('current');
       } catch (err) {
-        // Ignore errors from deleting non-existent or invalid sessions
         console.warn('Could not delete existing session (this is normal):', err);
       }
       
       // Create new session
       await account.createEmailPasswordSession(data.email, data.password);
       
-      // Validate the new session
-      const authenticatedUser = await validateSession();
+      // Get authenticated user
+      const authenticatedUser = await account.get();
+      console.log('✅ User authenticated after registration');
       
       // Create profile
       const profileData: ProfileInsert = {
@@ -318,14 +308,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ]
       );
 
+      console.log('✅ Profile created successfully');
+
       setState({
         user: authenticatedUser,
         profile: profile as Profile,
         isLoading: false,
         error: null,
+        isInitialized: true,
       });
     } catch (err) {
-      console.error('Sign up error:', err);
+      console.error('❌ Sign up error:', err);
       setState(prev => ({
         ...prev,
         error: err instanceof Error ? err.message : 'Sign up failed',
@@ -337,17 +330,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
+      console.log('🔄 Signing out...');
       setState(prev => ({ ...prev, isLoading: true, error: null }));
       
       await account.deleteSession('current');
+      console.log('✅ Sign out successful');
       
       setState({
         user: null,
         profile: null,
         isLoading: false,
         error: null,
+        isInitialized: true,
       });
     } catch (err) {
+      console.error('❌ Sign out error:', err);
       setState(prev => ({
         ...prev,
         error: err instanceof Error ? err.message : 'Sign out failed',
@@ -433,6 +430,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           profile: null,
           isLoading: false,
+          isInitialized: true,
         }));
       }
     } catch (err) {
@@ -444,6 +442,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           isLoading: false,
           error: 'Network connection error. Please check your internet connection.',
+          isInitialized: true,
         }));
       } else {
         setState({
@@ -451,6 +450,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           profile: null,
           isLoading: false,
           error: err instanceof Error ? err.message : 'Auth refresh failed',
+          isInitialized: true,
         });
       }
     }
