@@ -15,7 +15,8 @@ import {
   TrendingUp,
   LogOut
 } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from '@tanstack/react-router';
 
 interface ProfileProps {
   userType: 'developer' | 'company';
@@ -24,14 +25,30 @@ interface ProfileProps {
 
 const Profile: React.FC<ProfileProps> = ({ userType, onNavigate }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const { signOut, loading } = useAuth();
+  const { signOut, isLoading } = useAuth();
+  const navigate = useNavigate();
 
   const handleSignOut = async () => {
     try {
+      console.log('🔄 Profile: Starting sign out process...');
+      
+      // Call the sign out function from AuthContext
       await signOut();
-      onNavigate('landing'); // Navigate to landing page after sign out
+      
+      console.log('✅ Profile: Sign out successful, redirecting to homepage...');
+      
+      // Navigate to homepage after successful sign out
+      navigate({ to: '/', replace: true });
+      
+      console.log('🎯 Profile: Navigation to homepage completed');
+      
     } catch (error) {
-      console.error('Sign out error:', error);
+      console.error('❌ Profile: Sign out error:', error);
+      
+      // Even if there's an error, still try to redirect to homepage
+      // since the AuthContext should have cleared the local state
+      console.log('⚠️ Profile: Redirecting to homepage despite error...');
+      navigate({ to: '/', replace: true });
     }
   };
 
@@ -100,7 +117,7 @@ const Profile: React.FC<ProfileProps> = ({ userType, onNavigate }) => {
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex items-center justify-between h-16">
             <button
-              onClick={() => onNavigate('dashboard')}
+              onClick={() => navigate({ to: '/dashboard' })}
               className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -109,11 +126,20 @@ const Profile: React.FC<ProfileProps> = ({ userType, onNavigate }) => {
             <div className="flex items-center space-x-4">
               <button
                 onClick={handleSignOut}
-                disabled={loading}
+                disabled={isLoading}
                 className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <LogOut className="w-4 h-4" />
-                <span>{loading ? 'Signing out...' : 'Sign Out'}</span>
+                {isLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Signing out...</span>
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="w-4 h-4" />
+                    <span>Sign Out</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

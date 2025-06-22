@@ -10,9 +10,11 @@ import {
   DollarSign,
   Star,
   Award,
-  Code
+  Code,
+  LogOut
 } from 'lucide-react';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DashboardProps {
   userType: 'developer' | 'company';
@@ -20,6 +22,32 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ userType }) => {
   const [activeTab, setActiveTab] = useState('overview');
+  const { signOut, isLoading } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    try {
+      console.log('🔄 Dashboard: Starting sign out process...');
+      
+      // Call the sign out function from AuthContext
+      await signOut();
+      
+      console.log('✅ Dashboard: Sign out successful, redirecting to homepage...');
+      
+      // Navigate to homepage after successful sign out
+      navigate({ to: '/', replace: true });
+      
+      console.log('🎯 Dashboard: Navigation to homepage completed');
+      
+    } catch (error) {
+      console.error('❌ Dashboard: Sign out error:', error);
+      
+      // Even if there's an error, still try to redirect to homepage
+      // since the AuthContext should have cleared the local state
+      console.log('⚠️ Dashboard: Redirecting to homepage despite error...');
+      navigate({ to: '/', replace: true });
+    }
+  };
 
   const navigation = [
     { id: 'overview', label: 'Overview', icon: Home, to: '/dashboard' },
@@ -185,6 +213,24 @@ const Dashboard: React.FC<DashboardProps> = ({ userType }) => {
                 <Plus className="w-4 h-4" />
                 <span>{userType === 'developer' ? 'Find Projects' : 'Post Project'}</span>
               </Link>
+              
+              <button
+                onClick={handleSignOut}
+                disabled={isLoading}
+                className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Signing out...</span>
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="w-4 h-4" />
+                    <span>Sign Out</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

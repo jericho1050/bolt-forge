@@ -335,12 +335,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      console.log('🔄 Signing out...');
+      console.log('🔄 Starting sign out process...');
       setState(prev => ({ ...prev, isLoading: true, error: null }));
       
-      await account.deleteSession('current');
-      console.log('✅ Sign out successful');
+      // Clear all authentication data
+      try {
+        // Delete the current session from Appwrite
+        await account.deleteSession('current');
+        console.log('✅ Appwrite session deleted successfully');
+      } catch (sessionError) {
+        // Log the error but don't fail the sign-out process
+        console.warn('⚠️ Could not delete Appwrite session (session may already be invalid):', sessionError);
+      }
       
+      // Clear any cached data (localStorage, sessionStorage, etc.)
+      try {
+        // Clear any auth-related localStorage items
+        const authKeys = Object.keys(localStorage).filter(key => 
+          key.includes('auth') || 
+          key.includes('user') || 
+          key.includes('session') ||
+          key.includes('token')
+        );
+        authKeys.forEach(key => localStorage.removeItem(key));
+        
+        // Clear any auth-related sessionStorage items
+        const sessionKeys = Object.keys(sessionStorage).filter(key => 
+          key.includes('auth') || 
+          key.includes('user') || 
+          key.includes('session') ||
+          key.includes('token')
+        );
+        sessionKeys.forEach(key => sessionStorage.removeItem(key));
+        
+        console.log('✅ Local storage and session storage cleared');
+      } catch (storageError) {
+        console.warn('⚠️ Could not clear some cached data:', storageError);
+      }
+      
+      // Clear the auth state
       setState({
         user: null,
         profile: null,
@@ -348,14 +381,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         error: null,
         isInitialized: true,
       });
+      
+      console.log('✅ Sign out completed successfully - user will be redirected to homepage');
+      
     } catch (err) {
       console.error('❌ Sign out error:', err);
-      setState(prev => ({
-        ...prev,
-        error: err instanceof Error ? err.message : 'Sign out failed',
+      
+      // Even if there's an error, still clear the local state
+      // This ensures the user isn't stuck in a signed-in state
+      setState({
+        user: null,
+        profile: null,
         isLoading: false,
-      }));
-      throw err;
+        error: err instanceof Error ? err.message : 'Sign out encountered an issue, but you have been logged out locally',
+        isInitialized: true,
+      });
+      
+      // Don't throw the error - we want sign out to always succeed locally
+      console.log('⚠️ Sign out completed with warnings - user state cleared locally');
     }
   };
 
@@ -435,6 +478,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           profile: null,
           isLoading: false,
+          isInitialized: true,
         }));
       }
     } catch (err) {
@@ -446,6 +490,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           isLoading: false,
           error: 'Network connection error. Please check your internet connection.',
+          isInitialized: true,
         }));
       } else {
         setState({
