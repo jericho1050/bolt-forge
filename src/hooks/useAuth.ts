@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Models, Query, Permission, Role } from 'appwrite';
 import { account, databases, DATABASE_ID, COLLECTION_IDS } from '../lib/appwrite';
 import { Profile, ProfileInsert } from '../lib/database/appwrite-types';
-import { OAuthProvider } from '../lib/validations/auth';
 
 export function useAuth() {
   const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
@@ -26,7 +25,7 @@ export function useAuth() {
         setUser(user);
         
         if (user) {
-          // For OAuth users landing on homepage, auto-create profile if missing
+          // For new users landing on homepage, auto-create profile if missing
           await fetchProfile(user.$id, true);
         } else {
           setProfile(null);
@@ -68,7 +67,7 @@ export function useAuth() {
         console.log('ℹ️ No profile found - new user');
         
         if (createIfMissing) {
-          console.log('🔄 Creating basic profile for OAuth user...');
+          console.log('🔄 Creating basic profile for new user...');
           const currentUser = await account.get();
           
           const profileData: ProfileInsert = {
@@ -89,7 +88,7 @@ export function useAuth() {
             ]
           );
           
-          console.log('✅ Basic profile created for OAuth user with permissions');
+          console.log('✅ Basic profile created for new user with permissions');
           setProfile(newProfile as Profile);
         } else {
           setProfile(null);
@@ -164,27 +163,6 @@ export function useAuth() {
       return { data: { user: authenticatedUser, profile }, error: null };
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Sign up failed');
-      setError(error.message);
-      setLoading(false);
-      return { data: null, error };
-    }
-  };
-
-  const signInWithOAuth = async (provider: OAuthProvider) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Redirect to OAuth provider - redirects to homepage after success/failure
-      account.createOAuth2Session(
-        provider as any,
-        `${window.location.origin}/`,
-        `${window.location.origin}/?error=oauth_failed`
-      );
-      
-      return { data: null, error: null };
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('OAuth sign in failed');
       setError(error.message);
       setLoading(false);
       return { data: null, error };
@@ -293,7 +271,6 @@ export function useAuth() {
     error,
     signIn,
     signUp,
-    signInWithOAuth,
     signOut,
     updateProfile,
     resetPassword,

@@ -96,15 +96,11 @@ export const changePasswordSchema = z
     path: ['confirmNewPassword'],
   });
 
-// OAuth provider schema
-export const oauthProviderSchema = z.enum(['google', 'github']);
-
 // Export TypeScript types
 export type SignUpFormData = z.infer<typeof signUpSchema>;
 export type SignInFormData = z.infer<typeof signInSchema>;
 export type PasswordResetFormData = z.infer<typeof passwordResetSchema>;
 export type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;
-export type OAuthProvider = z.infer<typeof oauthProviderSchema>;
 
 // Password strength calculation
 export function calculatePasswordStrength(password: string): {

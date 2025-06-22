@@ -7,10 +7,8 @@ import {
   signUpSchema, 
   signInSchema, 
   SignUpFormData, 
-  SignInFormData,
-  OAuthProvider 
+  SignInFormData
 } from '../lib/validations/auth';
-import OAuthButtons from './auth/OAuthButtons';
 import SignUpForm from './auth/SignUpForm';
 import SignInForm from './auth/SignInForm';
 
@@ -60,7 +58,7 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
     blockDurationMs: 15 * 60 * 1000, // 15 minutes block
   });
 
-  const { signIn, signUp, signInWithOAuth, user } = useAuth();
+  const { signIn, signUp, user } = useAuth();
 
   // Close modal when user is authenticated
   useEffect(() => {
@@ -179,7 +177,7 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
         return;
       }
 
-      // For now, assume input is email (Supabase requires email for auth)
+      // For now, assume input is email (Appwrite requires email for auth)
       const email = signInData.emailOrUsername;
       
       console.log('🔄 Calling signIn with email:', email);
@@ -200,32 +198,6 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
       rateLimit.recordAttempt();
       setGeneralError('An unexpected error occurred. Please try again.');
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOAuthSignIn = async (provider: OAuthProvider) => {
-    if (loading) return;
-    
-    try {
-      setLoading(true);
-      setGeneralError(null);
-      
-      console.log('🔄 Starting OAuth sign in with:', provider);
-      
-      const { error } = await signInWithOAuth(provider);
-      
-      if (error) {
-        console.error('❌ OAuth error:', error);
-        setGeneralError(error.message);
-        setLoading(false);
-      } else {
-        console.log('✅ OAuth redirect initiated');
-        // Don't set loading to false - user will be redirected
-      }
-    } catch (err) {
-      console.error('❌ OAuth exception:', err);
-      setGeneralError('OAuth sign in failed. Please try again.');
       setLoading(false);
     }
   };
@@ -264,22 +236,6 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
               {generalError}
             </div>
           )}
-
-          {/* OAuth Buttons */}
-          <OAuthButtons
-            onOAuthSignIn={handleOAuthSignIn}
-            loading={loading}
-            disabled={rateLimit.isBlocked}
-          />
-
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">Or continue with email</span>
-            </div>
-          </div>
 
           {/* Forms */}
           {isSignUp ? (

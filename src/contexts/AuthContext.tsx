@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Models, Query, Permission, Role, ID } from 'appwrite';
 import { account, databases, DATABASE_ID, COLLECTION_IDS } from '../lib/appwrite';
 import { Profile, ProfileInsert } from '../lib/database/appwrite-types';
-import { OAuthProvider, SignInFormData, SignUpFormData } from '../lib/validations/auth';
+import { SignInFormData, SignUpFormData } from '../lib/validations/auth';
 
 interface AuthState {
   user: Models.User<Models.Preferences> | null;
@@ -16,7 +16,6 @@ interface AuthContextType extends AuthState {
   signIn: (data: SignInFormData) => Promise<void>;
   signUp: (data: SignUpFormData) => Promise<void>;
   signOut: () => Promise<void>;
-  signInWithOAuth: (provider: OAuthProvider) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string, oldPassword: string) => Promise<void>;
   
@@ -199,7 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           isLoading: false,
         }));
       } else {
-        // Auto-create profile for OAuth users
+        // Auto-create profile for new users
         const currentUser = await account.get();
         const profileData: ProfileInsert = {
           user_id: currentUser.$id,
@@ -210,7 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const newProfile = await databases.createDocument(
           DATABASE_ID,
           COLLECTION_IDS.PROFILES,
-          ID.unique(), // Use ID.unique() instead of 'unique()'
+          ID.unique(),
           profileData,
           [
             Permission.read(Role.any()),
@@ -330,25 +329,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setState(prev => ({
         ...prev,
         error: err instanceof Error ? err.message : 'Sign up failed',
-        isLoading: false,
-      }));
-      throw err;
-    }
-  };
-
-  const signInWithOAuth = async (provider: OAuthProvider) => {
-    try {
-      setState(prev => ({ ...prev, isLoading: true, error: null }));
-      
-      await account.createOAuth2Session(
-        provider,
-        `${window.location.origin}/`,
-        `${window.location.origin}/?error=oauth_failed`
-      );
-    } catch (err) {
-      setState(prev => ({
-        ...prev,
-        error: err instanceof Error ? err.message : 'OAuth sign in failed',
         isLoading: false,
       }));
       throw err;
@@ -485,7 +465,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signIn,
     signUp,
     signOut,
-    signInWithOAuth,
     resetPassword,
     updatePassword,
     updateProfile,
