@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   // Helper function to retry operations with exponential backoff
-  const retryWithBackoff = async <T>(
+  const retryWithBackoff = async <T,>(
     operation: () => Promise<T>,
     maxRetries: number = 3,
     baseDelay: number = 1000
@@ -502,4 +502,4 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-} 
+}
