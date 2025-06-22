@@ -239,11 +239,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await account.deleteSession('current');
       } catch (err) {
-        // Ignore errors from deleting non-existent or invalid sessions
         console.warn('Could not delete existing session (this is normal):', err);
       }
       
       // Create new session
+      console.log('🔄 Creating session for:', data.emailOrUsername);
       await account.createEmailPasswordSession(data.emailOrUsername, data.password);
       
       // Get user data
@@ -252,6 +252,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       setState(prev => ({ ...prev, user }));
       await fetchProfile(user.$id);
+      
+      console.log('🎯 Sign in complete - redirect should happen now');
     } catch (err) {
       console.error('❌ Sign in error:', err);
       setState(prev => ({
@@ -280,6 +282,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       
       // Create new session
+      console.log('🔄 Creating session after registration');
       await account.createEmailPasswordSession(data.email, data.password);
       
       // Get authenticated user
@@ -317,6 +320,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         error: null,
         isInitialized: true,
       });
+      
+      console.log('🎯 Sign up complete - redirect should happen now');
     } catch (err) {
       console.error('❌ Sign up error:', err);
       setState(prev => ({
@@ -430,7 +435,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           profile: null,
           isLoading: false,
-          isInitialized: true,
         }));
       }
     } catch (err) {
@@ -442,7 +446,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           isLoading: false,
           error: 'Network connection error. Please check your internet connection.',
-          isInitialized: true,
         }));
       } else {
         setState({

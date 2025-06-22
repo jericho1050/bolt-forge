@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, AlertTriangle } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../contexts/AuthContext';
 import { useAuthValidation } from '../hooks/useAuthValidation';
 import { useRateLimit } from '../hooks/useRateLimit';
 import { 
@@ -63,7 +63,7 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
   // Close modal when user is authenticated
   useEffect(() => {
     if (user && isOpen && isInitialized) {
-      console.log('✅ User authenticated, closing modal');
+      console.log('✅ User authenticated, closing modal and redirecting...');
       onClose();
     }
   }, [user, isOpen, isInitialized, onClose]);
@@ -117,7 +117,7 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
       
       await signUp(signUpData);
       
-      console.log('✅ Sign up successful');
+      console.log('✅ Sign up successful - modal will close and redirect automatically');
       // Modal will close automatically when user state updates
     } catch (err) {
       console.error('❌ Sign up error:', err);
@@ -152,7 +152,7 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
       
       await signIn(signInData);
       
-      console.log('✅ Sign in successful');
+      console.log('✅ Sign in successful - modal will close and redirect automatically');
       rateLimit.reset();
       // Modal will close automatically when user state updates
     } catch (err) {
