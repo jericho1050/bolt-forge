@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Models, Query, Permission, Role, ID } from 'appwrite';
+import { Models, Query, Permission, Role, ID, OAuthProvider } from 'appwrite';
 import { account, databases, DATABASE_ID, COLLECTION_IDS } from '../lib/appwrite';
 import { Profile, ProfileInsert } from '../lib/database/appwrite-types';
 import { SignInFormData, SignUpFormData } from '../lib/validations/auth';
@@ -16,6 +16,7 @@ interface AuthContextType extends AuthState {
   // Auth operations
   signIn: (data: SignInFormData) => Promise<void>;
   signUp: (data: SignUpFormData) => Promise<void>;
+  signInWithOAuth: (provider: OAuthProvider) => Promise<void>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string, oldPassword: string) => Promise<void>;
@@ -86,6 +87,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
+  // Get current URL for OAuth redirects
+  const getOAuthUrls = () => {
+    const baseUrl = window.location.origin;
+    return {
+      success: `${baseUrl}/`,
+      failure: `${baseUrl}/?error=oauth_failed`
+    };
+  };
+
   // Check if there's a valid session without trying to delete invalid ones
   const checkSession = async () => {
     try {
@@ -115,6 +125,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const initializeAuth = async () => {
       try {
         console.log('🔄 Initializing authentication...');
+        
+        // Check for OAuth callback in URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const oauthError = urlParams.get('error');
+        
+        if (oauthError === 'oauth_failed') {
+          console.log('❌ OAuth authentication failed');
+          if (mounted) {
+            setState(prev => ({
+              ...prev,
+              error: 'OAuth authentication failed. Please try again.',
+              isLoading: false,
+              isInitialized: true,
+            }));
+          }
+          // Clear the error parameter from URL
+          window.history.replaceState({}, '', window.location.pathname);
+          return;
+        }
         
         // Use the safer checkSession method that doesn't try to delete invalid sessions
         const user = await checkSession();
@@ -259,6 +288,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setState(prev => ({
         ...prev,
         error: err instanceof Error ? err.message : 'Sign in failed',
+        isLoading: false,
+      }));
+      throw err;
+    }
+  };
+
+  const signInWithOAuth = async (provider: OAuthProvider) => {
+    try {
+      console.log(`🔄 Starting OAuth sign in with ${provider}...`);
+      setState(prev => ({ ...prev, isLoading: true, error: null }));
+      
+      // Get dynamic URLs for OAuth redirect
+      const { success, failure } = getOAuthUrls();
+      
+      console.log(`🔄 OAuth URLs - Success: ${success}, Failure: ${failure}`);
+      
+      // Delete any existing sessions first (ignore errors)
+      try {
+        await account.deleteSession('current');
+      } catch (err) {
+        console.warn('Could not delete existing session (this is normal):', err);
+      }
+      
+      // Initiate OAuth flow - this will redirect to the provider
+      console.log(`🔄 Initiating ${provider} OAuth flow...`);
+      await account.createOAuth2Session(
+        provider,
+        success,
+        failure
+      );
+      
+      // Note: The user will be redirected to the OAuth provider
+      // When they return, the app will re-initialize and detect the session
+      
+    } catch (err) {
+      console.error(`❌ OAuth sign in error with ${provider}:`, err);
+      setState(prev => ({
+        ...prev,
+        error: `OAuth authentication with ${provider} failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
         isLoading: false,
       }));
       throw err;
@@ -512,6 +580,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ...state,
     signIn,
     signUp,
+    signInWithOAuth,
     signOut,
     resetPassword,
     updatePassword,

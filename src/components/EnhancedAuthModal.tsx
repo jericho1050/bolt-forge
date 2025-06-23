@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
+import { OAuthProvider } from 'appwrite';
 import { useAuth } from '../contexts/AuthContext';
 import { useAuthValidation } from '../hooks/useAuthValidation';
 import { useRateLimit } from '../hooks/useRateLimit';
@@ -11,6 +12,7 @@ import {
 } from '../lib/validations/auth';
 import SignUpForm from './auth/SignUpForm';
 import SignInForm from './auth/SignInForm';
+import OAuthButtons from './auth/OAuthButtons';
 
 interface EnhancedAuthModalProps {
   isOpen: boolean;
@@ -59,7 +61,7 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
     blockDurationMs: 15 * 60 * 1000, // 15 minutes block
   });
 
-  const { signIn, signUp, user, isInitialized } = useAuth();
+  const { signIn, signUp, signInWithOAuth, user, isInitialized } = useAuth();
 
   // Monitor online status
   useEffect(() => {
@@ -96,8 +98,15 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
   if (!isOpen) return null;
 
   // Enhanced error categorization
-  const categorizeError = (error: string): { type: 'network' | 'credentials' | 'server' | 'validation'; message: string } => {
+  const categorizeError = (error: string): { type: 'network' | 'credentials' | 'server' | 'validation' | 'oauth'; message: string } => {
     const lowerError = error.toLowerCase();
+    
+    if (lowerError.includes('oauth') || lowerError.includes('authorization')) {
+      return {
+        type: 'oauth',
+        message: 'OAuth authentication failed. Please try again or use email/password login.'
+      };
+    }
     
     if (lowerError.includes('network') || lowerError.includes('connection') || lowerError.includes('fetch')) {
       return {
@@ -147,6 +156,24 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
     // Clear auth error when user starts typing
     if (authError) {
       setAuthError(null);
+    }
+  };
+
+  const handleOAuthSignIn = async (provider: OAuthProvider) => {
+    if (loading || !isOnline) return;
+    
+    setLoading(true);
+    setAuthError(null);
+
+    try {
+      console.log(`🔄 Starting OAuth sign in with ${provider}`);
+      await signInWithOAuth(provider);
+      // OAuth will redirect, so we don't need to handle success here
+    } catch (err) {
+      console.error(`❌ OAuth sign in error with ${provider}:`, err);
+      const { message } = categorizeError(err instanceof Error ? err.message : 'OAuth sign in failed');
+      setAuthError(message);
+      setLoading(false);
     }
   };
 
@@ -281,6 +308,27 @@ const EnhancedAuthModal: React.FC<EnhancedAuthModalProps> = ({
               <div>
                 <p className="font-medium">Too Many Failed Attempts</p>
                 <p className="text-sm">Please wait {rateLimit.remainingTime} seconds before trying again.</p>
+              </div>
+            </div>
+          )}
+
+          {/* OAuth Buttons */}
+          {!isSignUp && (
+            <div className="mb-6">
+              <OAuthButtons 
+                onOAuthSignIn={handleOAuthSignIn}
+                loading={loading}
+                disabled={!isOnline || rateLimit.isBlocked}
+              />
+              
+              {/* Divider */}
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300" />
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">Or continue with email</span>
+                </div>
               </div>
             </div>
           )}

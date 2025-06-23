@@ -42,3 +42,54 @@ export const BUCKET_IDS = {
   PROJECT_FILES: 'project_files',
   MESSAGE_FILES: 'message_files',
 } as const;
+
+// OAuth Providers
+export const OAUTH_PROVIDERS = {
+  GITHUB: 'github',
+  GOOGLE: 'google',
+} as const;
+
+// OAuth Configuration Helper
+export const getOAuthConfig = () => {
+  const baseUrl = window.location.origin;
+  
+  return {
+    success: `${baseUrl}/`,
+    failure: `${baseUrl}/?error=oauth_failed`,
+    scopes: {
+      github: ['user:email', 'read:user'],
+      google: ['email', 'profile'],
+    }
+  };
+};
+
+// Helper function to map OAuth user data to profile data
+export const mapOAuthUserToProfile = (user: any, provider: string) => {
+  const baseProfile = {
+    user_id: user.$id,
+    full_name: user.name || '',
+    user_type: 'developer' as const, // Default to developer, can be changed later
+  };
+
+  // Provider-specific mappings
+  switch (provider) {
+    case 'github':
+      return {
+        ...baseProfile,
+        github_username: user.prefs?.login || '',
+        website: user.prefs?.blog || '',
+        bio: user.prefs?.bio || '',
+        location: user.prefs?.location || '',
+      };
+    
+    case 'google':
+      return {
+        ...baseProfile,
+        avatar_url: user.prefs?.picture || '',
+        // Google doesn't provide username, so we'll generate one from email
+      };
+    
+    default:
+      return baseProfile;
+  }
+};
